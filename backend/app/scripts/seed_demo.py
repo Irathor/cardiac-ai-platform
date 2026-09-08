@@ -1,6 +1,11 @@
 """Creates one demo organization, one user per role, and the Role rows they
 need. Refuses to run outside development, and the printed credentials are
-for local/demo use only — see docs/dataset-card.md / README "Demo credentials".
+for local/demo use only — see README "Usuarios de prueba".
+
+Passwords are deliberately trivial (per-role 4-digit PINs, not a real
+password policy) — this is a local research prototype's demo data, not a
+production credential; there is no password-complexity rule anywhere in
+this codebase to bypass (see app/schemas/user.py).
 
 Usage: python -m app.scripts.seed_demo
 """
@@ -14,7 +19,16 @@ from app.models.organization import Organization
 from app.models.role import Role
 from app.repositories import user_repository
 
-DEMO_PASSWORD = "Demo-Password-123!"  # noqa: S105 (dev-only demo credential, not a secret)
+# Dev-only demo credentials, not secrets — one simple PIN per role, easy to
+# remember while trying each role's view of the app.
+DEMO_PASSWORDS: dict[RoleName, str] = {
+    RoleName.ADMIN: "1111",
+    RoleName.DOCTOR: "1234",
+    RoleName.ANNOTATOR: "2222",
+    RoleName.ML_ENGINEER: "3333",
+    RoleName.MODEL_APPROVER: "4444",
+    RoleName.AUDITOR: "5555",
+}
 DEMO_ORG_NAME = "CardiacAI Research Demo"
 
 
@@ -38,33 +52,37 @@ def main() -> None:
                 db.add(Role(name=role_name.value, description=f"{role_name.value} role"))
         db.flush()
 
-        created = []
+        credentials = []
         for role_name in RoleName:
             email = f"{role_name.value.lower()}@demo.cardiacai-test.dev"
-            if user_repository.get_by_email(db, email) is not None:
-                continue
-            user = user_repository.create(
-                db,
-                organization_id=org.id,
-                email=email,
-                full_name=f"Demo {role_name.value.title()}",
-                password_hash=hash_password(DEMO_PASSWORD),
-            )
+            password = DEMO_PASSWORDS[role_name]
+            existing = user_repository.get_by_email(db, email)
+            if existing is None:
+                user = user_repository.create(
+                    db,
+                    organization_id=org.id,
+                    email=email,
+                    full_name=f"Demo {role_name.value.title()}",
+                    password_hash=hash_password(password),
+                )
+            else:
+                # Re-running the seed converges existing users to the
+                # current DEMO_PASSWORDS mapping instead of silently
+                # leaving whatever password they were created with.
+                user = existing
+                user.password_hash = hash_password(password)
             role = user_repository.get_role_by_name(db, role_name.value)
             user_repository.assign_role(db, user_id=user.id, role_id=role.id, assigned_by=None)
-            created.append(email)
+            credentials.append((email, password))
 
         db.commit()
     finally:
         db.close()
 
     print(f"Demo organization: {DEMO_ORG_NAME}")
-    if created:
-        print("Created demo users (development only — rotate/disable outside demo mode):")
-        for email in created:
-            print(f"  {email}  /  {DEMO_PASSWORD}")
-    else:
-        print("Demo users already existed — nothing created.")
+    print("Demo users (development only — rotate/disable outside demo mode):")
+    for email, password in credentials:
+        print(f"  {email}  /  {password}")
 
 
 if __name__ == "__main__":

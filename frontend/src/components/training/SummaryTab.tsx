@@ -102,12 +102,17 @@ export function SummaryTab({ modelVersion, evaluation, runsHistory }: SummaryTab
     <Grid container spacing={2}>
       {stats.map((stat) => (
         <Grid item xs={6} sm={4} md={3} key={stat.label}>
-          <Card variant="outlined">
+          <Card
+            variant="outlined"
+            sx={{ transition: "transform 150ms ease, border-color 150ms ease", "&:hover": { transform: "translateY(-2px)", borderColor: "primary.main" } }}
+          >
             <CardContent>
               <Typography variant="body2" color="text.secondary">
                 {stat.label}
               </Typography>
-              <Typography variant="h6">{stat.value}</Typography>
+              <Typography variant="h6" color="primary.light">
+                {stat.value}
+              </Typography>
             </CardContent>
           </Card>
         </Grid>

@@ -1,3 +1,6 @@
+import dataclasses
+import json
+
 import numpy as np
 import pytest
 
@@ -158,3 +161,25 @@ def test_anatomical_plausibility_flags_lv_not_enclosed():
     rv = np.zeros((10, 10, 10), dtype=bool)
     result = check_anatomical_plausibility(lv, rv, myo)
     assert result.lv_not_enclosed_by_myocardium
+
+
+def test_anatomical_plausibility_fields_are_json_serializable():
+    """Regression test: on this numpy version, np.count_nonzero returns a
+    numpy integer, so a naive comparison built from it is numpy.bool_ (which,
+    unlike numpy.float64, is NOT a subclass of Python's bool and json.dumps
+    rejects outright) rather than a real Python bool. This exact bug crashed
+    a real 60-epoch GPU training run at the very last step — saving its own
+    metrics file — so every boolean field here must survive a real
+    `json.dumps`, not just an isinstance/equality check."""
+    lv = np.zeros((10, 10, 10), dtype=bool)
+    lv[4:6, 4:6, 4:6] = True
+    myo = np.zeros((10, 10, 10), dtype=bool)
+    rv = np.zeros((10, 10, 10), dtype=bool)
+    result = check_anatomical_plausibility(lv, rv, myo)
+
+    for field in dataclasses.fields(result):
+        value = getattr(result, field.name)
+        assert type(value) is bool, f"{field.name} is {type(value)}, not a real Python bool"
+    assert type(result.any_violation) is bool
+
+    json.dumps(dataclasses.asdict(result) | {"any_violation": result.any_violation})

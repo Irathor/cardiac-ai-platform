@@ -16,6 +16,14 @@ import { useMemo, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import type { Cnn3dMetrics, ClassificationValidationReport, NearestCentroidMetrics } from "../../api/training";
+import {
+  categoricalChartColors,
+  chartAxisTick,
+  chartColors,
+  chartLegendStyle,
+  chartTooltipStyle,
+  heatCellColor,
+} from "../../theme";
 import { fmtNumber, fmtPercent } from "./format";
 
 interface ClassificationTabProps {
@@ -25,17 +33,12 @@ interface ClassificationTabProps {
 
 type Normalization = "raw" | "true" | "predicted";
 
-const CURVE_COLORS = ["#1976d2", "#d32f2f", "#2e7d32", "#ed6c02", "#9c27b0", "#0288d1"];
+const CURVE_COLORS = categoricalChartColors;
 
 function matrixFor(report: ClassificationValidationReport, normalization: Normalization): number[][] {
   if (normalization === "true") return report.confusion_matrix_normalized_true;
   if (normalization === "predicted") return report.confusion_matrix_normalized_predicted;
   return report.confusion_matrix;
-}
-
-function cellColor(value: number, max: number): string {
-  const alpha = max > 0 ? Math.min(value / max, 1) : 0;
-  return `rgba(25, 118, 210, ${alpha.toFixed(2)})`;
 }
 
 function SimpleClassificationView({ metrics }: { metrics: NearestCentroidMetrics }) {
@@ -143,7 +146,7 @@ function FullClassificationView({ cnn3dMetrics }: { cnn3dMetrics: Cnn3dMetrics }
                     <TableCell
                       key={colIdx}
                       align="right"
-                      sx={{ backgroundColor: cellColor(value, maxCell) }}
+                      sx={{ backgroundColor: heatCellColor(value, maxCell) }}
                     >
                       {normalization === "raw" ? value : fmtPercent(value)}
                     </TableCell>
@@ -194,15 +197,22 @@ function FullClassificationView({ cnn3dMetrics }: { cnn3dMetrics: Cnn3dMetrics }
       <Box sx={{ height: 320, mb: 4 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="fpr" type="number" domain={[0, 1]} allowDuplicatedCategory={false} />
-            <YAxis dataKey="tpr" type="number" domain={[0, 1]} />
-            <Tooltip />
-            <Legend />
+            <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+            <XAxis
+              dataKey="fpr"
+              type="number"
+              domain={[0, 1]}
+              allowDuplicatedCategory={false}
+              tick={chartAxisTick}
+              stroke={chartColors.axis}
+            />
+            <YAxis dataKey="tpr" type="number" domain={[0, 1]} tick={chartAxisTick} stroke={chartColors.axis} />
+            <Tooltip {...chartTooltipStyle} />
+            <Legend {...chartLegendStyle} />
             <Line
               data={[{ fpr: 0, tpr: 0 }, { fpr: 1, tpr: 1 }]}
               dataKey="tpr"
-              stroke="#999"
+              stroke={chartColors.reference}
               strokeDasharray="4 4"
               dot={false}
               name="Reference"
@@ -229,11 +239,18 @@ function FullClassificationView({ cnn3dMetrics }: { cnn3dMetrics: Cnn3dMetrics }
       <Box sx={{ height: 320 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="recall" type="number" domain={[0, 1]} allowDuplicatedCategory={false} />
-            <YAxis dataKey="precision" type="number" domain={[0, 1]} />
-            <Tooltip />
-            <Legend />
+            <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+            <XAxis
+              dataKey="recall"
+              type="number"
+              domain={[0, 1]}
+              allowDuplicatedCategory={false}
+              tick={chartAxisTick}
+              stroke={chartColors.axis}
+            />
+            <YAxis dataKey="precision" type="number" domain={[0, 1]} tick={chartAxisTick} stroke={chartColors.axis} />
+            <Tooltip {...chartTooltipStyle} />
+            <Legend {...chartLegendStyle} />
             {prData.map(({ label, color, curve }) => (
               <Line
                 key={label}

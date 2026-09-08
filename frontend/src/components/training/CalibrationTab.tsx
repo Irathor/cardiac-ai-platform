@@ -2,6 +2,7 @@ import { Box, Chip, Stack, Typography } from "@mui/material";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import type { ClassificationValidationReport } from "../../api/training";
+import { chartAxisTick, chartColors, chartLegendStyle, chartTooltipStyle } from "../../theme";
 import { fmtNumber, fmtPercent } from "./format";
 
 interface CalibrationTabProps {
@@ -34,15 +35,22 @@ export function CalibrationTab({ report }: CalibrationTabProps) {
       <Box sx={{ height: 300, mb: 4 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="confidence" type="number" domain={[0, 1]} allowDuplicatedCategory={false} />
-            <YAxis dataKey="accuracy" type="number" domain={[0, 1]} />
-            <Tooltip />
-            <Legend />
+            <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+            <XAxis
+              dataKey="confidence"
+              type="number"
+              domain={[0, 1]}
+              allowDuplicatedCategory={false}
+              tick={chartAxisTick}
+              stroke={chartColors.axis}
+            />
+            <YAxis dataKey="accuracy" type="number" domain={[0, 1]} tick={chartAxisTick} stroke={chartColors.axis} />
+            <Tooltip {...chartTooltipStyle} />
+            <Legend {...chartLegendStyle} />
             <Line
               data={[{ confidence: 0, accuracy: 0 }, { confidence: 1, accuracy: 1 }]}
               dataKey="accuracy"
-              stroke="#999"
+              stroke={chartColors.reference}
               strokeDasharray="4 4"
               dot={false}
               name="Perfect calibration"
@@ -51,7 +59,7 @@ export function CalibrationTab({ report }: CalibrationTabProps) {
             <Line
               data={reliabilityData}
               dataKey="accuracy"
-              stroke="#1976d2"
+              stroke={chartColors.primary}
               name="Observed"
               isAnimationActive={false}
             />
@@ -65,13 +73,27 @@ export function CalibrationTab({ report }: CalibrationTabProps) {
       <Box sx={{ height: 300, mb: 2 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={selective_prediction.risk_coverage_curve}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="coverage" type="number" domain={[0, 1]} />
-            <YAxis domain={[0, 1]} />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="accuracy" stroke="#1976d2" dot={false} name="Accuracy" isAnimationActive={false} />
-            <Line type="monotone" dataKey="macro_f1" stroke="#d32f2f" dot={false} name="Macro F1" isAnimationActive={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+            <XAxis dataKey="coverage" type="number" domain={[0, 1]} tick={chartAxisTick} stroke={chartColors.axis} />
+            <YAxis domain={[0, 1]} tick={chartAxisTick} stroke={chartColors.axis} />
+            <Tooltip {...chartTooltipStyle} />
+            <Legend {...chartLegendStyle} />
+            <Line
+              type="monotone"
+              dataKey="accuracy"
+              stroke={chartColors.primary}
+              dot={false}
+              name="Accuracy"
+              isAnimationActive={false}
+            />
+            <Line
+              type="monotone"
+              dataKey="macro_f1"
+              stroke={chartColors.secondary}
+              dot={false}
+              name="Macro F1"
+              isAnimationActive={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </Box>

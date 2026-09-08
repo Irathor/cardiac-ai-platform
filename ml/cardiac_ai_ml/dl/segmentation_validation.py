@@ -36,7 +36,7 @@ PHASES = ("ED", "ES")
 
 
 @torch.no_grad()
-def _predict_volume(
+def predict_volume(
     model: torch.nn.Module, image_path: str, device: torch.device, target_spacing_xy: tuple[float, float], target_size: tuple[int, int]
 ) -> np.ndarray:
     """Runs the model slice-by-slice over one full 3D image and stacks the
@@ -73,7 +73,7 @@ def _load_resampled_mask_volume(mask_path: str, target_spacing_xy: tuple[float, 
     return np.stack(slices, axis=-1)  # (H, W, Z)
 
 
-def _native_z_spacing_mm(image_path: str) -> float:
+def native_z_spacing_mm(image_path: str) -> float:
     return float(nib.load(image_path).header.get_zooms()[2])
 
 
@@ -81,9 +81,9 @@ def _evaluate_one_phase(
     model: torch.nn.Module, image_path: str, mask_path: str, device: torch.device,
     target_spacing_xy: tuple[float, float], target_size: tuple[int, int],
 ) -> dict:
-    prediction_volume = _predict_volume(model, image_path, device, target_spacing_xy, target_size)
+    prediction_volume = predict_volume(model, image_path, device, target_spacing_xy, target_size)
     target_volume = _load_resampled_mask_volume(mask_path, target_spacing_xy, target_size)
-    spacing = (target_spacing_xy[0], target_spacing_xy[1], _native_z_spacing_mm(image_path))
+    spacing = (target_spacing_xy[0], target_spacing_xy[1], native_z_spacing_mm(image_path))
 
     per_structure = {}
     structure_masks_pred = {}

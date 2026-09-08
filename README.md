@@ -313,7 +313,9 @@ phase lands, and no phase is marked done until its own tests have actually been 
 ```bash
 cp .env.example .env
 # edit .env: set POSTGRES_PASSWORD, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, JWT_SECRET_KEY
-docker compose up --build
+docker compose up -d --build
+docker compose exec backend alembic upgrade head
+docker compose exec backend python -m app.scripts.seed_demo
 ```
 
 Once containers are healthy:
@@ -327,8 +329,47 @@ Once containers are healthy:
 | MLflow | http://localhost:5000 |
 | MinIO console | http://localhost:9001 |
 
+For local frontend development with hot reload instead of the Docker build:
+
+```bash
+cd frontend && npm install && npm run dev   # http://localhost:5173, same API by default
+```
+
 Run migrations and seed demo data with `make migrate` / `make seed` (or the equivalent
-`docker compose exec backend ...` commands from the Makefile).
+`docker compose exec backend ...` commands from the Makefile) instead of the two commands above,
+if you prefer.
+
+**Real U-Net/CNN3D retraining from `/admin/training`** additionally needs the host-side GPU runner
+running (see [`docs/dl-training-runner.md`](docs/dl-training-runner.md)):
+
+```bash
+ml/.venv-dl/Scripts/python ml/scripts/training_runner_service.py
+```
+
+Without it, the nearest-centroid classifier still retrains fine from the UI (no GPU involved) —
+only the two deep-learning model types need the runner.
+
+### Usuarios de prueba (demo)
+
+`app/scripts/seed_demo.py` crea un usuario por rol, con contraseñas deliberadamente triviales para
+poder entrar y comparar rápido lo que ve cada rol — **solo para desarrollo/demo local, nunca en
+producción** (el script se niega a correr si `ENVIRONMENT=production`).
+
+| Rol | Email | Contraseña |
+|---|---|---|
+| ADMIN | `admin@demo.cardiacai-test.dev` | `1111` |
+| DOCTOR | `doctor@demo.cardiacai-test.dev` | `1234` |
+| ANNOTATOR | `annotator@demo.cardiacai-test.dev` | `2222` |
+| ML_ENGINEER | `ml_engineer@demo.cardiacai-test.dev` | `3333` |
+| MODEL_APPROVER | `model_approver@demo.cardiacai-test.dev` | `4444` |
+| AUDITOR | `auditor@demo.cardiacai-test.dev` | `5555` |
+
+Re-ejecutar el script (`docker compose exec backend python -m app.scripts.seed_demo`) es seguro en
+cualquier momento — actualiza la contraseña de los usuarios existentes a la tabla de arriba en vez
+de fallar o duplicarlos.
+
+`ADMIN`/`ML_ENGINEER` son los roles con acceso a `/admin/training`; `DOCTOR` es el rol pensado para
+`/viewer` (visor de imagen + análisis IA).
 
 ## Running tests
 

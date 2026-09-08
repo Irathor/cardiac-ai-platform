@@ -4,6 +4,8 @@ NIfTI patients, an untrained model, CPU only. Not a real accuracy check
 proves the per-patient 3D reconstruction + metric aggregation pipeline runs
 end to end and produces a well-formed, internally consistent report.
 """
+import json
+
 import nibabel as nib
 import numpy as np
 import pytest
@@ -88,3 +90,36 @@ def test_background_only_model_is_correctly_scored_as_all_empty_predictions(tmp_
             summary = report["aggregate"][structure][phase]
             assert summary["empty_prediction_percent"] == 100.0
             assert summary["dice"]["mean"] == pytest.approx(0.0, abs=1e-4)
+
+
+def test_report_with_a_real_predicted_lv_blob_is_json_serializable(tmp_path):
+    """Regression test: a real 60-epoch GPU run crashed at its very last
+    step (writing its own metrics.json) because the anatomical-plausibility
+    check's LV-enclosure comparison came out as numpy.bool_ rather than a
+    real Python bool. The background-only-model tests above never predict
+    any LV pixels, so they never exercise that comparison — this test uses
+    a model that always predicts a real, contiguous LV blob so the exact
+    code path that crashed actually runs, and then round-trips the whole
+    report through json.dumps for real, not just an isinstance check."""
+    root = tmp_path / "training"
+    root.mkdir()
+    _make_patient_dir(root, "NOR0", "NOR")
+    patients = discover_patients(root)
+
+    class PredictsCentralLvBlob(torch.nn.Module):
+        def forward(self, images: torch.Tensor) -> torch.Tensor:
+            batch, _, h, w = images.shape
+            logits = torch.zeros(batch, 4, h, w)
+            logits[:, 0] = 1.0  # background everywhere by default
+            cy, cx = h // 2, w // 2
+            logits[:, 0, cy - 3 : cy + 3, cx - 3 : cx + 3] = 0.0
+            logits[:, 3, cy - 3 : cy + 3, cx - 3 : cx + 3] = 1.0  # a real LV blob, no myocardium around it
+            return logits
+
+    model = PredictsCentralLvBlob().to(DEVICE)
+    report = run_full_segmentation_validation(model, patients, DEVICE, n_bootstrap=20)
+
+    # The whole point: this must not raise, exactly like the real run that crashed.
+    json.dumps(report)
+
+    assert report["anatomical_violation_rate_percent"]["ED"] > 0.0  # the blob has no myocardium around it

@@ -142,7 +142,10 @@ class AnatomicalPlausibility:
 
     @property
     def any_violation(self) -> bool:
-        return self.lv_multiple_components or self.rv_multiple_components or self.lv_not_enclosed_by_myocardium
+        # `or` returns whichever operand it lands on, not necessarily
+        # coerced to bool — wrap explicitly so this stays a real Python
+        # bool (JSON-serializable) even if a field ever holds numpy.bool_.
+        return bool(self.lv_multiple_components or self.rv_multiple_components or self.lv_not_enclosed_by_myocardium)
 
 
 def check_anatomical_plausibility(
@@ -165,8 +168,13 @@ def check_anatomical_plausibility(
             myocardium_overlap = np.count_nonzero(neighborhood & myocardium_mask)
             lv_not_enclosed = (myocardium_overlap / neighborhood_count) < enclosure_threshold
 
+    # bool(...) everywhere: np.count_nonzero returns a numpy integer type on
+    # this numpy version, so a comparison built from it (like lv_not_enclosed
+    # above) is numpy.bool_, not Python's bool — indistinguishable in normal
+    # use, but json.dumps rejects it outright, which is exactly how this
+    # surfaced (a real GPU run crashed writing its own metrics file).
     return AnatomicalPlausibility(
-        lv_multiple_components=lv_components > 1,
-        rv_multiple_components=rv_components > 1,
-        lv_not_enclosed_by_myocardium=lv_not_enclosed,
+        lv_multiple_components=bool(lv_components > 1),
+        rv_multiple_components=bool(rv_components > 1),
+        lv_not_enclosed_by_myocardium=bool(lv_not_enclosed),
     )

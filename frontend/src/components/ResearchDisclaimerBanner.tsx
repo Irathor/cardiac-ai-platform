@@ -6,7 +6,12 @@ import { Alert } from "@mui/material";
  */
 export function ResearchDisclaimerBanner() {
   return (
-    <Alert severity="warning" variant="filled" square sx={{ justifyContent: "center" }}>
+    <Alert
+      severity="warning"
+      variant="filled"
+      square
+      sx={{ justifyContent: "center", fontWeight: 600, letterSpacing: 0.2 }}
+    >
       Research prototype only. Not validated for clinical diagnosis or treatment decisions.
     </Alert>
   );

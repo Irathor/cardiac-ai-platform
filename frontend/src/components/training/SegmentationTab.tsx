@@ -25,6 +25,7 @@ import {
 } from "recharts";
 
 import type { AggregateStructureMetrics, DispersionSummary, UnetMetrics } from "../../api/training";
+import { chartAxisTick, chartColors, chartLegendStyle, chartTooltipStyle } from "../../theme";
 import { fmtNumber } from "./format";
 
 interface SegmentationTabProps {
@@ -72,13 +73,18 @@ export function SegmentationTab({ metrics }: SegmentationTabProps) {
           <Typography variant="subtitle2">{label}</Typography>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={barChartData(metrics, key)}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="structure" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+              <XAxis dataKey="structure" tick={chartAxisTick} stroke={chartColors.axis} />
+              <YAxis tick={chartAxisTick} stroke={chartColors.axis} />
+              <Tooltip {...chartTooltipStyle} />
+              <Legend {...chartLegendStyle} />
               {phases.map((phase, i) => (
-                <Bar key={phase} dataKey={phase} fill={i === 0 ? "#1976d2" : "#d32f2f"} />
+                <Bar
+                  key={phase}
+                  dataKey={phase}
+                  fill={i === 0 ? chartColors.primary : chartColors.secondary}
+                  radius={[4, 4, 0, 0]}
+                />
               ))}
             </BarChart>
           </ResponsiveContainer>
@@ -175,18 +181,25 @@ export function SegmentationTab({ metrics }: SegmentationTabProps) {
       <Box sx={{ height: 300 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={lossHistoryData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="epoch" />
-            <YAxis yAxisId="loss" />
-            <YAxis yAxisId="dice" orientation="right" domain={[0, 1]} />
-            <Tooltip />
-            <Legend />
-            <Line yAxisId="loss" type="monotone" dataKey="train_loss" stroke="#d32f2f" dot={false} name="Train loss" />
+            <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+            <XAxis dataKey="epoch" tick={chartAxisTick} stroke={chartColors.axis} />
+            <YAxis yAxisId="loss" tick={chartAxisTick} stroke={chartColors.axis} />
+            <YAxis yAxisId="dice" orientation="right" domain={[0, 1]} tick={chartAxisTick} stroke={chartColors.axis} />
+            <Tooltip {...chartTooltipStyle} />
+            <Legend {...chartLegendStyle} />
+            <Line
+              yAxisId="loss"
+              type="monotone"
+              dataKey="train_loss"
+              stroke={chartColors.secondary}
+              dot={false}
+              name="Train loss"
+            />
             <Line
               yAxisId="dice"
               type="monotone"
               dataKey="mean_dice_foreground"
-              stroke="#1976d2"
+              stroke={chartColors.primary}
               dot={false}
               name="Val mean Dice"
             />
