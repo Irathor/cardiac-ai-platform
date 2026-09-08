@@ -158,3 +158,30 @@ def test_invalid_nifti_upload_is_rejected(client, db_session, demo_org):
         files={"file": ("not-a-nifti.nii.gz", b"this is not a real nifti file", "application/octet-stream")},
     )
     assert response.status_code == 422
+
+
+def test_oversized_upload_is_rejected_before_being_processed(client, db_session, demo_org, monkeypatch):
+    """An authenticated user must not be able to exhaust server memory/storage
+    with an arbitrarily large upload (OWASP API4:2023) — see app.core.uploads."""
+    import app.api.v1.imaging as imaging_module
+
+    monkeypatch.setattr(imaging_module, "read_upload_within_limit", _make_tiny_limit_reader())
+
+    _doctor, study = _setup_assigned_doctor(db_session, demo_org, patient_suffix="7")
+    token = _login(client, "doc-7@cardiacai-test.dev")
+
+    response = client.post(
+        f"/api/v1/studies/{study.id}/series",
+        headers=_auth(token),
+        files={"file": ("series.nii.gz", _nifti_bytes(np.zeros((5, 5, 5), dtype=np.int16)), "application/octet-stream")},
+    )
+    assert response.status_code == 413
+
+
+def _make_tiny_limit_reader():
+    from app.core.uploads import UploadTooLargeError
+
+    async def _reader(file, max_bytes=1):
+        raise UploadTooLargeError("simulated: file exceeds the tiny test limit")
+
+    return _reader

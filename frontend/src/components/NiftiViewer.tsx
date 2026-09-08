@@ -51,5 +51,16 @@ export function NiftiViewer({
     };
   }, [seriesBlob, maskBlob, seriesFileName, maskFileName]);
 
-  return <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />;
+  return (
+    <canvas
+      ref={canvasRef}
+      role="img"
+      aria-label={
+        maskBlob
+          ? "Cardiac MRI volume with segmentation mask overlay"
+          : "Cardiac MRI volume"
+      }
+      style={{ width: "100%", height: "100%", display: "block" }}
+    />
+  );
 }

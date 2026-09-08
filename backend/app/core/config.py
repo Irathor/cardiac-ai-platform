@@ -5,6 +5,7 @@ from the environment (see .env.example at the repo root).
 """
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +47,21 @@ class Settings(BaseSettings):
 
     # CORS
     cors_allowed_origins: str = "http://localhost:5173"
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def _jwt_secret_key_must_be_set(cls, value: str) -> str:
+        # An empty secret would let anyone forge a valid access token — the
+        # other blank-by-default secrets (postgres_password, minio_*) fail
+        # loudly the moment they're actually used against a real service, but
+        # jwt.encode()/decode() would happily "succeed" with "" and never
+        # surface the mistake, so this needs its own explicit check.
+        if not value:
+            raise ValueError(
+                "JWT_SECRET_KEY must be set — generate one with: "
+                "python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+            )
+        return value
 
     @property
     def database_url(self) -> str:

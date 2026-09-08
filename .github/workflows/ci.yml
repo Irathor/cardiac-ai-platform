@@ -67,7 +67,7 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-  compose-config:
+  e2e:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,3 +75,32 @@ jobs:
         run: |
           cp .env.example .env
           docker compose config -q
+      - name: Build and start the full stack
+        run: docker compose up -d --build
+      - name: Wait for backend readiness
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/api/v1/health/ready; then exit 0; fi
+            sleep 2
+          done
+          echo "backend never became ready" && docker compose logs && exit 1
+      - name: Apply migrations and seed demo data
+        run: |
+          docker compose exec -T backend alembic upgrade head
+          docker compose exec -T backend python -m app.scripts.seed_demo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - name: Install Playwright
+        working-directory: tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run e2e tests
+        working-directory: tests
+        run: npm test
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs

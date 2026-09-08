@@ -106,7 +106,7 @@ def add_dataset_case(
     version = _load_version(db, dataset_id, version_id)
     if payload.split not in _ALLOWED_SPLITS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"split must be one of {sorted(_ALLOWED_SPLITS)}",
         )
     annotation = annotation_repository.get_by_id(db, payload.annotation_id)
@@ -118,7 +118,7 @@ def add_dataset_case(
             db, actor=engineer, version=version, annotation=annotation, split=payload.split
         )
     except dataset_service.AnnotationNotApprovedError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     except dataset_service.DatasetVersionLockedError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except dataset_service.PatientSplitConflictError as exc:
@@ -152,7 +152,7 @@ def lock_dataset_version(
     except dataset_service.DatasetVersionLockedError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except dataset_service.EmptyDatasetVersionError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     db.commit()
     db.refresh(version)
     return DatasetVersionOut.model_validate(version)

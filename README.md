@@ -223,7 +223,81 @@ This repository is being built incrementally, phase by phase (see [`docs/phases.
   - **Frontend: not done this phase**, same reasoning as Phase 6 — ML_ENGINEER/MODEL_APPROVER are
     internal MLOps roles, not part of the `/viewer` clinical demo page, and Swagger UI (`/docs`)
     already exercises every endpoint here.
-- [ ] Phase 8 — Quality (full test suites, security review, docs)
+- [x] **Phase 8 — Quality** (fully verified): lint across every package, a real e2e suite, a
+      hands-on security review with concrete fixes (not just a report), an accessibility pass, and
+      documentation cleanup.
+  - **Repository**: the project had never been under version control — initialized git and made
+    the first commit here. `git status`/`git log` are now meaningful for the first time.
+  - **Lint, for real this time**: `ruff` (`ml`, `backend`) and `eslint` (`frontend`) existed in the
+    repo since Phase 1 but neither had ever actually been run — CI never called them, and running
+    them cold surfaced real issues: ESLint's config was missing `languageOptions.globals` entirely,
+    so *every* browser global (`fetch`, `Blob`, `URL`, `document`, `setTimeout`, ...) was flagged
+    `no-undef` across the whole frontend (fixed with the `globals` package); a handful of unused
+    imports/variables in `ml/` and `backend/tests/`. Both linters now run in CI on every push.
+  - **Security review** (`docs/permissions.md`'s "backend enforces every rule" ethos extended to
+    infra/deps):
+    - **Unrestricted upload size (OWASP API4:2023)**: the NIfTI/mask upload endpoints did
+      `await file.read()` with no cap — an authenticated DOCTOR/ANNOTATOR could exhaust server
+      memory or MinIO storage with an arbitrarily large file. Fixed with
+      `app/core/uploads.py::read_upload_within_limit` (200 MB, reads in 1 MB chunks and aborts as
+      soon as the cap is exceeded, so memory usage is actually bounded, not just checked after the
+      fact) — returns `413`. 4 new unit tests + 1 API-level test.
+    - **`JWT_SECRET_KEY` had no validation**: an unset value silently defaulted to `""` — `jwt.encode`/
+      `decode` "work" fine with an empty secret, meaning anyone could forge a valid access token,
+      and nothing would fail loudly to reveal the misconfiguration (unlike `POSTGRES_PASSWORD`/
+      `MINIO_*`, which fail immediately and obviously the moment a real connection is attempted).
+      Added a pydantic `field_validator` that refuses to start with an empty secret. 3 new tests.
+    - **All Docker Compose ports were published to every network interface** (`0.0.0.0`), not just
+      localhost — including **Redis with no authentication at all**. Every documented usage in this
+      README only ever references `localhost`, so there was no reason for LAN-wide exposure.
+      Rebound every port (`postgres`, `redis`, `minio` ×2, `mlflow`, `backend`, `frontend`) to
+      `127.0.0.1` only.
+    - **Dependency audit**: `npm audit` found 7 frontend vulnerabilities (5 moderate, 1 high, 1
+      critical) — `react-router-dom` and the `vite`/`vitest`/`esbuild` chain. Upgraded
+      `react-router-dom` 6→7 and `vite`/`vitest` 5→8/2→3 (both needed a major bump — the fixes
+      were never backported to the installed major lines); verified the full lint/type-check/test/
+      build pipeline still passes after each, then kept them. **0 vulnerabilities now.**
+      `pip-audit` on the backend found `starlette` CVEs (fixed by pinning `starlette>=0.47.2` — the
+      installed range was capped below the patch by an unrelated `fastapi<0.116` pin, widened to
+      `<0.119`) and reviewed the handful that remain unpatchable within `fastapi`'s compatible
+      range: all require `StaticFiles`, `FileResponse`, `HTTPEndpoint`, `application/x-www-form-
+      urlencoded` forms, or trusting `request.url` for security decisions — this codebase uses none
+      of those (checked directly), so they're not exploitable here. `mlflow` (2.x → dozens of CVEs
+      only patched in 3.x) and `ecdsa` (a hard dependency of `python-jose` we never actually
+      exercise — this API only ever signs HS256, not ECDSA) are documented, deliberately deferred
+      residual risks rather than silently ignored — a Phase 7-scale MLflow major-version migration
+      wasn't attempted in the same pass as everything else here.
+    - **Timing side-channel in login** (noted, not fixed): `authenticate()` already returns an
+      identical response for "unknown email" and "wrong password" (no enumeration via response
+      content — this was already correct from Phase 2), but skips the Argon2 hash entirely for an
+      unknown email, which is measurably faster than hashing-then-rejecting a known email's wrong
+      password. A real fix (hash a dummy value for unknown emails to normalize timing) is a
+      reasonable follow-up; flagged here rather than either silently fixed or silently ignored.
+  - **Frontend test coverage**: `App.tsx` (routing, the backend-status chip, disclaimer banner) and
+    `ImagingViewerPage.tsx` (the actual functional page — login, series list, viewer, biomarkers,
+    AI analysis request/poll/result) had zero tests before this phase despite being the two most
+    important frontend files. 12 new tests (5 + 7), all API calls mocked at the module level. 23
+    frontend unit tests total.
+  - **E2E tests, from nothing**: `tests/` was documented in this README's repository layout since
+    Phase 1 but never actually contained anything. Added a real Playwright suite (`tests/e2e/`)
+    that runs against the actual `docker compose up` stack — no mocks — including a real login
+    against the real backend/Postgres using the seeded demo doctor. New CI job builds the full
+    stack, waits for readiness, seeds demo data, and runs it on every push.
+  - **Accessibility**: `<html lang="es">` didn't match the app's actual (English) UI text — fixed
+    to `lang="en"`. The NiftiViewer's bare `<canvas>` had no accessible name for screen readers —
+    added `role="img"` + a descriptive `aria-label`. MUI's own defaults already covered form labels
+    and alert roles correctly (verified via `getByLabelText`/`getByRole` passing in tests, not just
+    assumed).
+  - **Documentation**: `docs/clinical-limitations.md` linked to `docs/acdc-import.md`, which never
+    existed — wrote it, documenting the real (currently manual, API-driven) case-by-case import
+    flow rather than pretending a bulk-import script exists. Fixed the repository layout's
+    description of `ml/` (said "PyTorch/MONAI"; it's plain numpy) and `scripts/` (described as
+    already containing operational scripts; it's an empty placeholder).
+  - Everything above is exercised together, one more time, at the very end of this phase: 31 `ml/`
+    tests, 85 backend tests (SQLite and real Postgres/Redis/worker/MLflow), 23 frontend unit tests,
+    and 4 real Playwright e2e tests against the rebuilt, still-7-services-healthy stack — all
+    green, lint clean everywhere, `npm audit`/`pip-audit` reviewed and either fixed or explicitly
+    documented as accepted/deferred.
 
 Anything not checked above does not exist in the codebase yet — this README will be updated as each
 phase lands, and no phase is marked done until its own tests have actually been run.
@@ -275,9 +349,17 @@ cd backend && py -3.12 -m venv .venv
 
 # Frontend
 cd frontend && npm test        # unit tests (Vitest)
+cd frontend && npm run lint    # ESLint
 cd frontend && npx tsc -b      # type-check
 cd frontend && npm run build   # production build
+
+# End-to-end (Playwright) — needs the full stack already running (docker compose up)
+cd tests && npm install && npx playwright install --with-deps chromium
+cd tests && npm test
 ```
+
+Lint (`ruff check .` for `ml`/`backend`, `npm run lint` for `frontend`) also runs in CI — see
+`.github/workflows/ci.yml`.
 
 ## Repository layout
 
@@ -285,11 +367,11 @@ cd frontend && npm run build   # production build
 cardiac-ai-platform/
 ├── frontend/        React + TypeScript + Vite + MUI — clinical UI
 ├── backend/         FastAPI + SQLAlchemy + Alembic — clinical API
-├── ml/              PyTorch/MONAI — segmentation, classification, biomarkers, explainability
+├── ml/              Pure numpy — biomarkers, classification, Shapley explainability, "smoke training"
 ├── infrastructure/  Auxiliary service images (MLflow, ...)
-├── scripts/         Operational scripts (data import, maintenance)
+├── scripts/         Reserved for future operational scripts — empty for now; see docs/acdc-import.md
 ├── docs/            Architecture, permissions, data dictionary, ML/clinical docs
-├── tests/           Cross-cutting/e2e tests (Playwright)
+├── tests/           Cross-cutting/e2e tests (Playwright) — needs the full stack running
 ├── docker-compose.yml
 ├── .env.example
 ├── Makefile

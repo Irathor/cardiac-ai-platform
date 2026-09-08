@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import require_roles
 from app.core.roles import RoleName
+from app.core.uploads import UploadTooLargeError, read_upload_within_limit
 from app.db.session import get_db
 from app.models.annotation import Annotation
 from app.models.segmentation import Segmentation
@@ -128,7 +129,10 @@ async def update_annotation_draft(
     annotator: User = Depends(require_roles(RoleName.ANNOTATOR)),
 ) -> AnnotationOut:
     annotation = _load_annotation_for_annotator(db, annotation_id, annotator)
-    corrected_mask_bytes = await file.read() if file is not None else None
+    try:
+        corrected_mask_bytes = await read_upload_within_limit(file) if file is not None else None
+    except UploadTooLargeError as exc:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc)) from exc
     try:
         annotation = annotation_service.save_draft(
             db, actor=annotator, annotation=annotation,
@@ -137,7 +141,7 @@ async def update_annotation_draft(
     except annotation_service.InvalidAnnotationStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except annotation_service.InvalidDiagnosisLabelError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     db.commit()
     db.refresh(annotation)
     return AnnotationOut.model_validate(annotation)

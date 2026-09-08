@@ -1,0 +1,13 @@
+{
+  "name": "cardiac-ai-e2e",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cross-cutting end-to-end tests against the full docker-compose stack (see README.md).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2"
+  }
+}

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import require_roles
 from app.core.roles import RoleName
+from app.core.uploads import UploadTooLargeError, read_upload_within_limit
 from app.db.session import get_db
 from app.models.image_series import ImageSeries
 from app.models.imaging_study import ImagingStudy
@@ -48,14 +49,17 @@ async def upload_series(
     current_user: User = Depends(require_roles(RoleName.ADMIN, RoleName.DOCTOR)),
 ) -> ImageSeriesOut:
     study = _load_study_for_viewer(db, study_id, current_user)
-    file_bytes = await file.read()
+    try:
+        file_bytes = await read_upload_within_limit(file)
+    except UploadTooLargeError as exc:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc)) from exc
     try:
         series = imaging_service.upload_series(
             db, actor=current_user, study=study, file_bytes=file_bytes,
             series_type=series_type, phase=phase,
         )
     except imaging_service.InvalidNiftiFileError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     db.commit()
     db.refresh(series)
     return ImageSeriesOut.model_validate(series)
@@ -92,15 +96,18 @@ async def upload_segmentation(
     current_user: User = Depends(require_roles(RoleName.ADMIN, RoleName.DOCTOR)),
 ) -> SegmentationOut:
     series = _load_series(db, series_id, current_user)
-    file_bytes = await file.read()
+    try:
+        file_bytes = await read_upload_within_limit(file)
+    except UploadTooLargeError as exc:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc)) from exc
     try:
         segmentation = imaging_service.upload_segmentation(
             db, actor=current_user, series=series, file_bytes=file_bytes, model_version=model_version,
         )
     except imaging_service.InvalidNiftiFileError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     except imaging_service.SegmentationShapeMismatchError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     db.commit()
     db.refresh(segmentation)
     return SegmentationOut.model_validate(segmentation)
