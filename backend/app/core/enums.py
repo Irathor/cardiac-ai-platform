@@ -51,6 +51,12 @@ class TrainingRunStatus(str, Enum):
     CANCELLED = "CANCELLED"
 
 
+class TrainingModelType(str, Enum):
+    NEAREST_CENTROID = "NEAREST_CENTROID"
+    UNET_SEGMENTATION = "UNET_SEGMENTATION"
+    CNN3D_CLASSIFICATION = "CNN3D_CLASSIFICATION"
+
+
 class ModelVersionStatus(str, Enum):
     PENDING_REVIEW = "PENDING_REVIEW"
     APPROVED = "APPROVED"

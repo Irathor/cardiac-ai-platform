@@ -21,7 +21,7 @@ router = APIRouter()
 
 _MODEL_VERSION_NOT_FOUND = "Model version not found"
 
-_VIEW_ROLES = (RoleName.ML_ENGINEER, RoleName.MODEL_APPROVER)
+_VIEW_ROLES = (RoleName.ML_ENGINEER, RoleName.MODEL_APPROVER, RoleName.ADMIN)
 
 
 def _load_model_version(db: Session, model_version_id: uuid.UUID) -> ModelVersion:

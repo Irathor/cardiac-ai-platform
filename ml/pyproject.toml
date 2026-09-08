@@ -12,6 +12,25 @@ dev = [
     "pytest>=8.3,<9",
     "ruff>=0.7,<0.8",
 ]
+# Real deep learning (2D U-Net segmentation, 3D CNN classification) trained
+# on ACDC — see docs/acdc-import.md and README.md's "Deep learning models"
+# section. Kept separate from the lightweight numpy-only core dependencies
+# (and its own tests) so `pip install -e ".[dev]"` stays fast and CPU-only
+# for CI/anyone not training models. torch needs its CUDA-build index, not
+# plain PyPI, so install it first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu126
+#   pip install -e ".[dl]"
+dl = [
+    "torch>=2.8",
+    "monai>=1.6,<2",
+    "nibabel>=5.3,<6",
+    "scikit-learn>=1.5,<2",
+    "scikit-image>=0.24,<0.26",
+    "scipy>=1.13,<2",
+    "tqdm>=4.66,<5",
+    "matplotlib>=3.9,<4",
+    "pandas>=2.2,<3",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

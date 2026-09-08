@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     # MLflow (training run/model tracking — see docs/architecture.md)
     mlflow_tracking_uri: str = "http://mlflow:5000"
 
+    # DL training runner (see ml/scripts/training_runner_service.py, docs/dl-training-runner.md) —
+    # a host-side bridge process the worker reaches for U-Net/CNN3D jobs, since GPU passthrough
+    # into the worker container isn't available on this deployment. data_root is the shared
+    # ./data bind mount (docker-compose.yml) both sides read/write real training artifacts through.
+    training_runner_url: str = "http://host.docker.internal:8800"
+    data_root: str = "/data"
+
     # Auth
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"

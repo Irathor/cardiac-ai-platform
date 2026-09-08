@@ -20,7 +20,7 @@ class ModelEvaluationOut(BaseModel):
     id: uuid.UUID
     model_version_id: uuid.UUID
     split: str
-    accuracy: float
+    accuracy: float | None
     metrics: dict
     created_at: datetime
 

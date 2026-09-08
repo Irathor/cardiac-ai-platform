@@ -91,6 +91,7 @@ services:
       - ./backend/app:/srv/app
       - ./backend/tests:/srv/tests
       - ./ml/cardiac_ai_ml:/ml/cardiac_ai_ml
+      - ./data:/data
 
   worker:
     build:
@@ -115,6 +116,7 @@ services:
     volumes:
       - ./backend/app:/srv/app
       - ./ml/cardiac_ai_ml:/ml/cardiac_ai_ml
+      - ./data:/data
     healthcheck:
       # Overrides the backend image's HTTP-based HEALTHCHECK (see backend/Dockerfile) —
       # this container runs a Celery worker, not the web server, so there's nothing on :8000.

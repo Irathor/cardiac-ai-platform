@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+.venv*/
 .pytest_cache/
 .ruff_cache/
 
@@ -18,3 +19,4 @@ test-results/
 Thumbs.db
 
 data/acdc-raw/
+data/models/

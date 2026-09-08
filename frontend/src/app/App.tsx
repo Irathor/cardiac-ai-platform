@@ -4,6 +4,7 @@ import { Link, Route, Routes } from "react-router-dom";
 import { useBackendLiveness } from "../api/health";
 import { ResearchDisclaimerBanner } from "../components/ResearchDisclaimerBanner";
 import { ImagingViewerPage } from "../pages/ImagingViewerPage";
+import { ModelTrainingPage } from "../pages/ModelTrainingPage";
 
 function Dashboard() {
   const { data, isLoading, isError } = useBackendLiveness();
@@ -37,6 +38,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/viewer" element={<ImagingViewerPage />} />
+        <Route path="/admin/training" element={<ModelTrainingPage />} />
       </Routes>
     </Box>
   );

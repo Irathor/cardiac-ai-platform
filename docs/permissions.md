@@ -32,8 +32,8 @@ that manipulates request parameters directly (see `docs/architecture.md#security
 | Complete annotation, request review | | | ✅ | | | |
 | View anonymized data | | | | ✅ | | |
 | Create dataset versions, select approved cases | | | | ✅ | | |
-| Configure/start/cancel/supervise training runs | | | | ✅ | | |
-| View metrics, artifacts, logs | | | | ✅ | | |
+| Configure/start/cancel/supervise training runs (nearest-centroid, U-Net, CNN3D) | ✅ | | | ✅ | | |
+| View metrics, artifacts, logs (training runs, model versions, evaluations) | ✅ | | | ✅ | ✅ | |
 | Register candidate models, compare models | | | | ✅ | | |
 | Review evaluations | | | | | ✅ | |
 | Approve/reject candidate models | | | | | ✅ | |
@@ -43,7 +43,12 @@ that manipulates request parameters directly (see `docs/architecture.md#security
 ## Explicit denials (do not infer permission from role seniority)
 
 - **ADMIN cannot activate models** merely by being an administrator — model activation is
-  `MODEL_APPROVER`-only, even for an ADMIN account.
+  `MODEL_APPROVER`-only, even for an ADMIN account. This is a deliberate, narrow exception to the
+  otherwise-strict ADMIN/clinical-and-ML-workflow separation below: ADMIN was added to the
+  training-run and model-version/evaluation endpoints (`POST .../training-runs`,
+  `GET .../training-runs*`, `GET /model-versions*`) so an administrator can pick a model type and
+  retrain it and see the full validation results, without being able to review, approve, promote,
+  or retire a model — those stay `MODEL_APPROVER`-only, unchanged.
 - **DOCTOR** cannot administer users, and cannot train or activate models.
 - **ANNOTATOR** cannot turn their own annotation directly into approved ground truth — it must go
   through the review/approval workflow.
