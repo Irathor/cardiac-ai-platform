@@ -37,6 +37,13 @@ class ModelVersion(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), index=True)
     mlflow_run_id: Mapped[str] = mapped_column(String(100))
     mlflow_model_uri: Mapped[str] = mapped_column(String(500))
+    # MLflow Model Registry coordinates (see ADR-2 / EPIC-4 "Contrato técnico"):
+    # MLflow Registry is the source of truth for the artifact/technical stage,
+    # this table stays the source of truth for the human-approval status
+    # above. Always set together with the row itself (app.services.training_service),
+    # since a row is only ever created after a successful mlflow.register_model call.
+    mlflow_registry_name: Mapped[str] = mapped_column(String(200))
+    mlflow_registry_version: Mapped[str] = mapped_column(String(20))
     prototypes: Mapped[dict | None] = mapped_column(JSON())
     status: Mapped[str] = mapped_column(
         String(20), default=ModelVersionStatus.PENDING_REVIEW.value, index=True

@@ -12,6 +12,7 @@ from app.repositories import model_repository
 from app.schemas.model import (
     ModelEvaluationOut,
     ModelPromoteRequest,
+    ModelRegistryDivergenceOut,
     ModelReviewRequest,
     ModelVersionOut,
 )
@@ -37,6 +38,23 @@ def list_model_versions(
     current_user: User = Depends(require_roles(*_VIEW_ROLES)),
 ) -> list[ModelVersionOut]:
     return [ModelVersionOut.model_validate(m) for m in model_repository.list_all(db)]
+
+
+@router.get("/model-versions/registry-divergence")
+def get_registry_divergence(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*_VIEW_ROLES)),
+) -> list[ModelRegistryDivergenceOut]:
+    """Manual reconciliation report (EPIC-4 point 4): read-only, never
+    corrects anything — see app.services.model_service.check_registry_divergence.
+    Declared before the /{model_version_id} route so "registry-divergence"
+    is never swallowed as a path parameter.
+
+    Per-model-version MLflow fetch failures are reported inline as a
+    divergence entry with `fetch_error` set, not raised — this endpoint
+    never 502s for one bad reference (see check_registry_divergence)."""
+    divergences = model_service.check_registry_divergence(db)
+    return [ModelRegistryDivergenceOut(**vars(d)) for d in divergences]
 
 
 @router.get("/model-versions/{model_version_id}")
@@ -78,6 +96,8 @@ def review_model_version(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     except model_service.InvalidModelStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except model_service.ModelRegistrySyncError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     db.commit()
     db.refresh(model_version)
     return ModelVersionOut.model_validate(model_version)
@@ -99,6 +119,8 @@ def promote_model_version(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     except model_service.InvalidModelStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except model_service.ModelRegistrySyncError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     db.commit()
     db.refresh(model_version)
     return ModelVersionOut.model_validate(model_version)

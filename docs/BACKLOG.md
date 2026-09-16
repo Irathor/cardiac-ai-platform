@@ -16,6 +16,14 @@ Este archivo distingue tres cosas que no son lo mismo (ver `~/.claude/CLAUDE.md`
   `probabilities`, que tampoco se renderizan server-side), dejando el render explícitamente
   para un fast-follow — no forma parte del alcance de esta Epic ni de EPIC-10 (rediseño
   visual), que fue sobre el frontend ya existente, no sobre features nuevas.
+- **Corrección automática/asistida de divergencias del Model Registry** — EPIC-4 solo
+  implementó la detección de solo lectura (`GET /api/v1/model-versions/registry-divergence`,
+  ver ADR-2/EPIC-4 "Contrato técnico"). Resolver una divergencia real detectada (decidir si
+  se fuerza el stage de MLflow a lo que dice el `status` local, o viceversa) queda como
+  acción humana explícita fuera de esta Epic — la tabla propia es la fuente de verdad de
+  negocio, así que la corrección por defecto sería "MLflow sigue a la tabla propia", pero no
+  se implementó porque el propio criterio de aceptación de EPIC-4 solo pedía detección
+  ("aunque sea manual en esta fase").
 
 ## Niebla — Epics pendientes de decisión previa
 

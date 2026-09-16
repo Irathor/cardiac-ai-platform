@@ -131,9 +131,20 @@ def execute_training(db: Session, *, training_run_id: uuid.UUID) -> None:
             mlflow_run_id = mlflow_run.info.run_id
             mlflow_model_uri = f"{mlflow_run.info.artifact_uri}/prototypes.json"
 
+        # MLflow Model Registry is the source of truth for the artifact/stage
+        # (ADR-2, EPIC-4 point 1) — registered here, before the ModelVersion
+        # row exists, so it's impossible for a row to exist without a
+        # Registry counterpart. runs:/<run_id>/<artifact_path>, not
+        # mlflow_model_uri (that's the absolute artifact-store path, not a
+        # valid register_model URI).
+        registered = mlflow.register_model(
+            model_uri=f"runs:/{mlflow_run_id}/prototypes.json", name=MODEL_NAME,
+        )
+
         model_version = model_repository.create(
             db, training_run_id=run.id, created_by=run.requested_by,
             name=MODEL_NAME, mlflow_run_id=mlflow_run_id, mlflow_model_uri=mlflow_model_uri,
+            mlflow_registry_name=registered.name, mlflow_registry_version=registered.version,
             prototypes=prototypes, status=ModelVersionStatus.PENDING_REVIEW.value,
         )
         model_repository.create_evaluation(
@@ -269,14 +280,26 @@ def execute_dl_training(db: Session, *, training_run_id: uuid.UUID) -> None:
             mlflow.log_param("model_type", run.model_type)
             mlflow.log_param("runner_job_id", job_id)
             mlflow.log_dict(metrics, "metrics.json")
-            if weights_path.exists():
+            weights_logged = weights_path.exists()
+            if weights_logged:
                 mlflow.log_artifact(str(weights_path))
             mlflow_run_id = mlflow_run.info.run_id
             mlflow_model_uri = f"{mlflow_run.info.artifact_uri}/metrics.json"
 
+        # See execute_training above for why this happens before
+        # model_repository.create (ADR-2, EPIC-4 point 1). Registers the
+        # actual weights checkpoint (.pt) when it was logged — that's the
+        # real deployable artifact — falling back to metrics.json only if
+        # the runner didn't produce a checkpoint file.
+        registered_artifact_path = weights_path.name if weights_logged else "metrics.json"
+        registered = mlflow.register_model(
+            model_uri=f"runs:/{mlflow_run_id}/{registered_artifact_path}", name=model_name,
+        )
+
         model_version = model_repository.create(
             db, training_run_id=run.id, created_by=run.requested_by,
             name=model_name, mlflow_run_id=mlflow_run_id, mlflow_model_uri=mlflow_model_uri,
+            mlflow_registry_name=registered.name, mlflow_registry_version=registered.version,
             prototypes=None, status=ModelVersionStatus.PENDING_REVIEW.value,
         )
         model_repository.create_evaluation(

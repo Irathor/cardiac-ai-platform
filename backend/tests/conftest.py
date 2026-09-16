@@ -11,16 +11,21 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
 os.environ.setdefault("POSTGRES_PASSWORD", "test-password")
 os.environ.setdefault("MINIO_ACCESS_KEY", "test-access-key")
 os.environ.setdefault("MINIO_SECRET_KEY", "test-secret-key")
-# Real mlflow client, pointed at a local file store instead of a server — no
-# Docker/network needed, but app.services.training_service's mlflow calls are
-# genuinely exercised rather than mocked. Real server-backed tracking is
-# verified separately inside Docker Compose. Path.as_uri() (not an f-string)
-# because mlflow's URI parser rejects "file://C:\..." on Windows — it needs
-# the proper triple-slash "file:///C:/..." form.
+# Real mlflow client, pointed at a local sqlite-backed store instead of a
+# server — no Docker/network needed, but app.services.training_service's
+# and app.services.model_service's mlflow calls (including
+# register_model/transition_model_version_stage, EPIC-4) are genuinely
+# exercised rather than mocked. Real server-backed tracking is verified
+# separately inside Docker Compose. A plain file store (mlflow's default)
+# does NOT support the Model Registry — register_model/transition_model_version_stage
+# require a database-backed store, hence sqlite here instead of file://.
+# as_posix() keeps the URI well-formed on Windows ("sqlite:///C:/...").
 os.environ.setdefault(
-    "MLFLOW_TRACKING_URI", Path(tempfile.mkdtemp(prefix="mlflow-test-")).as_uri()
+    "MLFLOW_TRACKING_URI",
+    f"sqlite:///{Path(tempfile.mkdtemp(prefix='mlflow-test-')).as_posix()}/mlflow.db",
 )
 
+import mlflow.tracking._tracking_service.utils as mlflow_tracking_utils
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -44,6 +49,20 @@ from app.storage import object_storage
 # in the same process and DB transaction context as the test itself.
 celery_app.conf.task_always_eager = True
 celery_app.conf.task_eager_propagates = True
+
+# A SQLAlchemy-backed mlflow store (used above instead of a file:// store,
+# see the MLFLOW_TRACKING_URI comment above) falls back to creating
+# "./mlruns" *relative to the process's CWD* for any experiment without an
+# explicit artifact location — including its own auto-created "Default"
+# experiment, a side effect of the very first store connection. Redirecting
+# that fallback into the same tempdir as the tracking DB keeps every test
+# artifact contained instead of littering the repo root with a stray
+# mlruns/ directory on every test run. Path.as_uri() (not a plain path
+# string) so Windows drive letters like "C:\..." never get misparsed as a
+# URI scheme by mlflow's urlparse-based artifact repository lookup.
+mlflow_tracking_utils.DEFAULT_LOCAL_FILE_AND_ARTIFACT_PATH = (
+    Path(tempfile.mkdtemp(prefix="mlflow-artifacts-test-")).as_uri()
+)
 
 
 @pytest.fixture
@@ -222,6 +241,14 @@ def make_annotation(db_session, *, segmentation, annotator, status="APPROVED", d
 def make_model_version(
     db_session, *, name="cardiac-classifier", status="PENDING_REVIEW", prototypes=None, dataset_version=None,
 ):
+    """Also registers a real MLflow Registry entry (same sqlite-backed store
+    as app.services.training_service, see conftest's MLFLOW_TRACKING_URI) so
+    that app.services.model_service.review()/promote()/check_registry_divergence
+    — which call the real MlflowClient — have a genuine registered version
+    to transition/inspect, instead of every caller having to mock MLflow
+    individually (see EPIC-4)."""
+    import mlflow
+
     from app.core.enums import DatasetVersionStatus, TrainingRunStatus
     from app.models.dataset import Dataset
     from app.models.dataset_version import DatasetVersion
@@ -245,9 +272,17 @@ def make_model_version(
 
         prototypes = {d.value: dict.fromkeys(FEATURE_NAMES, 100.0) for d in DiagnosisClass}
 
+    mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+    mlflow.set_experiment(name)
+    with mlflow.start_run(run_name=f"test-fixture-{uuid.uuid4().hex[:8]}") as run:
+        mlflow.log_dict(prototypes, "prototypes.json")
+        run_id = run.info.run_id
+    registered = mlflow.register_model(model_uri=f"runs:/{run_id}/prototypes.json", name=name)
+
     model_version = ModelVersion(
-        training_run_id=training_run.id, name=name, mlflow_run_id=f"test-run-{uuid.uuid4().hex[:8]}",
+        training_run_id=training_run.id, name=name, mlflow_run_id=run_id,
         mlflow_model_uri="file:///tmp/prototypes.json", prototypes=prototypes, status=status,
+        mlflow_registry_name=registered.name, mlflow_registry_version=registered.version,
     )
     db_session.add(model_version)
     db_session.commit()

@@ -70,14 +70,24 @@ def _record_run_and_version(
         for key, value in headline_metrics.items():
             mlflow.log_metric(key, value)
         mlflow.log_dict(full_metrics, "metrics.json")
-        if weights_path.exists():
+        weights_logged = weights_path.exists()
+        if weights_logged:
             mlflow.log_artifact(str(weights_path))
         mlflow_run_id = mlflow_run.info.run_id
         mlflow_model_uri = f"{mlflow_run.info.artifact_uri}/metrics.json"
 
+    # Same registration point/rule as app.services.training_service.execute_dl_training
+    # (ADR-2, EPIC-4): register the real checkpoint artifact when it was
+    # logged, before the ModelVersion row is created.
+    registered_artifact_path = weights_path.name if weights_logged else "metrics.json"
+    registered = mlflow.register_model(
+        model_uri=f"runs:/{mlflow_run_id}/{registered_artifact_path}", name=model_name,
+    )
+
     model_version = model_repository.create(
         db, training_run_id=run.id, created_by=requested_by,
         name=model_name, mlflow_run_id=mlflow_run_id, mlflow_model_uri=mlflow_model_uri,
+        mlflow_registry_name=registered.name, mlflow_registry_version=registered.version,
         prototypes=None, status=ModelVersionStatus.PENDING_REVIEW.value,
     )
     model_version.created_at = completed_at

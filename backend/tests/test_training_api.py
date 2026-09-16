@@ -10,7 +10,7 @@ import httpx
 import pytest
 
 from app.core.enums import TrainingModelType, TrainingRunStatus
-from app.core.model_registry import MODEL_NAME_CNN3D, MODEL_NAME_UNET
+from app.core.model_registry import MODEL_NAME, MODEL_NAME_CNN3D, MODEL_NAME_UNET
 from app.models.training_run import TrainingRun
 from app.repositories import model_repository
 from app.services import training_service
@@ -125,6 +125,66 @@ def test_training_run_completes_and_registers_a_model_version(client, db_session
     assert evaluations.status_code == 200
     assert evaluations.json()[0]["split"] == "TEST"
     assert evaluations.json()[0]["accuracy"] == pytest.approx(1.0)
+
+
+# --- EPIC-4: mlflow.register_model called at the exact point (inside the
+# training try, before model_repository.create) with the runs:/ URI, not
+# the absolute mlflow_model_uri. ---
+
+
+def test_execute_training_registers_the_model_at_the_right_uri_before_the_row_is_created(
+    client, db_session, demo_org, monkeypatch,
+):
+    token, dataset_id, version_id = _setup_locked_version_with_all_classes(client, db_session, demo_org, suffix="reg1")
+    real_register_model = training_service.mlflow.register_model
+    calls: list[dict] = []
+
+    def spying_register_model(model_uri, name):
+        # At the moment register_model is called, no ModelVersion row exists
+        # yet (EPIC-4 point 1: registration happens strictly before
+        # model_repository.create).
+        assert model_repository.list_all(db_session) == []
+        calls.append({"model_uri": model_uri, "name": name})
+        return real_register_model(model_uri=model_uri, name=name)
+
+    monkeypatch.setattr(training_service.mlflow, "register_model", spying_register_model)
+
+    run = client.post(
+        f"/api/v1/datasets/{dataset_id}/versions/{version_id}/training-runs", headers=_auth(token),
+    )
+    assert run.status_code == 202
+    fetched = client.get(f"/api/v1/training-runs/{run.json()['id']}", headers=_auth(token)).json()
+    assert fetched["status"] == "COMPLETED"
+
+    assert len(calls) == 1
+    assert calls[0]["name"] == MODEL_NAME
+    assert calls[0]["model_uri"].startswith("runs:/")
+    assert calls[0]["model_uri"].endswith("/prototypes.json")
+    assert fetched["mlflow_run_id"] in calls[0]["model_uri"]
+
+    versions = model_repository.list_all(db_session)
+    assert len(versions) == 1
+    assert versions[0].mlflow_registry_name == MODEL_NAME
+    assert versions[0].mlflow_registry_version is not None
+
+
+def test_execute_training_fails_the_run_without_creating_a_model_version_when_registration_fails(
+    client, db_session, demo_org, monkeypatch,
+):
+    token, dataset_id, version_id = _setup_locked_version_with_all_classes(client, db_session, demo_org, suffix="reg2")
+
+    def failing_register_model(model_uri, name):
+        raise RuntimeError("mlflow registry unreachable")
+
+    monkeypatch.setattr(training_service.mlflow, "register_model", failing_register_model)
+
+    run = client.post(
+        f"/api/v1/datasets/{dataset_id}/versions/{version_id}/training-runs", headers=_auth(token),
+    )
+    fetched = client.get(f"/api/v1/training-runs/{run.json()['id']}", headers=_auth(token)).json()
+    assert fetched["status"] == "FAILED"
+    assert "mlflow registry unreachable" in fetched["error_message"]
+    assert model_repository.list_all(db_session) == []
 
 
 def test_training_requires_a_locked_dataset_version(client, db_session, demo_org):
@@ -351,6 +411,49 @@ def test_execute_dl_training_unet_happy_path(db_session, tmp_path, monkeypatch):
     assert evaluations[0].accuracy == pytest.approx(0.83)
     assert evaluations[0].metrics["best_epoch"] == 43
     assert evaluations[0].metrics["test"]["mean_dice_foreground"] == pytest.approx(0.83)
+
+
+def test_execute_dl_training_registers_the_checkpoint_weights_in_mlflow_registry(db_session, tmp_path, monkeypatch):
+    """EPIC-4 point 1: registers the .pt checkpoint (the real deployable
+    artifact), not metrics.json, when the runner produced one."""
+    run = _make_dl_run(db_session, model_type=TrainingModelType.UNET_SEGMENTATION.value)
+    _patch_data_root(monkeypatch, tmp_path)
+
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "unet2d.pt").write_bytes(b"fake-weights")
+    (models_dir / "unet2d.metrics.json").write_text(json.dumps(_UNET_METRICS_FIXTURE))
+
+    monkeypatch.setattr(training_service.httpx, "post", lambda url, json=None, timeout=None: _FakeResponse({"job_id": "job-unet-reg"}))
+    monkeypatch.setattr(
+        training_service.httpx, "get",
+        lambda url, timeout=None: _FakeResponse(
+            {"status": "COMPLETED", "log_tail": "done", "result_path": "models/unet2d.metrics.json", "error": None}
+        ),
+    )
+    monkeypatch.setattr(training_service.time, "sleep", lambda s: None)
+
+    real_register_model = training_service.mlflow.register_model
+    calls: list[dict] = []
+
+    def spying_register_model(model_uri, name):
+        calls.append({"model_uri": model_uri, "name": name})
+        return real_register_model(model_uri=model_uri, name=name)
+
+    monkeypatch.setattr(training_service.mlflow, "register_model", spying_register_model)
+
+    training_service.execute_dl_training(db_session, training_run_id=run.id)
+    db_session.commit()
+
+    db_session.refresh(run)
+    assert run.status == TrainingRunStatus.COMPLETED.value
+    assert len(calls) == 1
+    assert calls[0]["name"] == MODEL_NAME_UNET
+    assert calls[0]["model_uri"].endswith("/unet2d.pt")
+
+    versions = model_repository.list_all(db_session)
+    assert versions[0].mlflow_registry_name == MODEL_NAME_UNET
+    assert versions[0].mlflow_registry_version is not None
 
 
 _CNN3D_CV_FIXTURE = {"k": 5, "mean_accuracy": 0.78, "std_accuracy": 0.05, "folds": [{"fold": 0, "accuracy": 0.8}]}

@@ -45,3 +45,11 @@ class ModelReviewRequest(BaseModel):
 
 class ModelPromoteRequest(BaseModel):
     justification: str
+
+
+class ModelRegistryDivergenceOut(BaseModel):
+    model_version_id: uuid.UUID
+    local_status: str
+    expected_stage: str | None
+    actual_stage: str | None
+    fetch_error: str | None = None
