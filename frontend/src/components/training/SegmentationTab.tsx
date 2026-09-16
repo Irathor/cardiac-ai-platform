@@ -171,7 +171,7 @@ export function SegmentationTab({ metrics }: SegmentationTabProps) {
         </Table>
       </TableContainer>
       <Typography variant="body2" sx={{ mb: 4 }}>
-        Anatomical violation rate —{" "}
+        Anatomical violation rate:{" "}
         {phases.map((phase) => `${phase}: ${fmtNumber(anatomical_violation_rate_percent[phase], 1)}%`).join(", ")}
       </Typography>
 

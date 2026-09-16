@@ -10,6 +10,7 @@ import {
   MODEL_NAME_CNN3D,
   MODEL_NAME_UNET,
 } from "../../api/training";
+import { heroSurface } from "../../theme";
 import { fmtNumber, fmtPercent, NOT_APPLICABLE, NOT_AVAILABLE } from "./format";
 
 interface SummaryTabProps {
@@ -100,23 +101,33 @@ export function SummaryTab({ modelVersion, evaluation, runsHistory }: SummaryTab
 
   return (
     <Grid container spacing={2}>
-      {stats.map((stat) => (
-        <Grid item xs={6} sm={4} md={3} key={stat.label}>
-          <Card
-            variant="outlined"
-            sx={{ transition: "transform 150ms ease, border-color 150ms ease", "&:hover": { transform: "translateY(-2px)", borderColor: "primary.main" } }}
-          >
-            <CardContent>
-              <Typography variant="body2" color="text.secondary">
-                {stat.label}
-              </Typography>
-              <Typography variant="h6" color="primary.light">
-                {stat.value}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      ))}
+      {stats.map((stat, index) => {
+        // The leading metric (the one that answers "how good is this model
+        // version?" at a glance) is the sole hero on this tab; the rest of
+        // the grid stays flat and quiet — no shared hover-lift on every tile.
+        const isLead = index === 0;
+        return (
+          <Grid item xs={6} sm={4} md={3} key={stat.label}>
+            <Card sx={isLead ? heroSurface("cyan") : undefined}>
+              <CardContent>
+                <Typography variant="body2" color="text.secondary">
+                  {stat.label}
+                </Typography>
+                <Typography
+                  variant={isLead ? "h5" : "h6"}
+                  sx={{
+                    color: isLead ? "primary.light" : "text.primary",
+                    fontFeatureSettings: '"tnum" 1',
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {stat.value}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        );
+      })}
     </Grid>
   );
 }

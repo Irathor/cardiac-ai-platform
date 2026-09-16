@@ -127,9 +127,13 @@ describe("ImagingViewerPage", () => {
     await userEvent.type(screen.getByLabelText("Study ID"), "study-1");
     await userEvent.click(screen.getByRole("button", { name: "Run AI analysis" }));
 
-    await waitFor(() => expect(screen.getByText(/AI analysis — COMPLETED/)).toBeInTheDocument(), {
-      timeout: 3000,
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByRole("heading", { name: /AI analysis/ })).toBeInTheDocument();
+        expect(screen.getByText("COMPLETED")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
     const predicted = screen.getByText(/Predicted:/);
     expect(within(predicted).getByText("NORMAL")).toBeInTheDocument();
   });

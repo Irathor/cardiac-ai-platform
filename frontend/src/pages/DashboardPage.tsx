@@ -1,10 +1,11 @@
 import BiotechIcon from "@mui/icons-material/Biotech";
 import ModelTrainingIcon from "@mui/icons-material/ModelTraining";
 import ViewInArIcon from "@mui/icons-material/ViewInAr";
-import { Box, Button, Card, CardContent, Chip, Container, Fade, Grid, Stack, Typography } from "@mui/material";
+import { alpha, Box, Button, Card, CardContent, Chip, Container, Fade, Grid, Stack, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 
 import { useBackendLiveness } from "../api/health";
+import { tokens } from "../theme";
 
 /** Landing page introducing the platform and routing into its two workflows. */
 export function DashboardPage() {
@@ -49,11 +50,18 @@ export function DashboardPage() {
 
       <Grid container spacing={3} sx={{ mt: 4 }}>
         <Grid item xs={12} md={6}>
-          <Card sx={{ height: "100%", "&:hover": { borderColor: "primary.main" } }}>
+          <Card
+            sx={{
+              height: "100%",
+              borderColor: alpha(tokens.cyan, 0.18),
+              transition: "border-color 200ms ease",
+              "&:hover": { borderColor: alpha(tokens.cyan, 0.5) },
+            }}
+          >
             <CardContent sx={{ p: 3 }}>
-              <ViewInArIcon sx={{ color: "primary.main", fontSize: 36, mb: 1 }} />
+              <ViewInArIcon sx={{ color: "primary.main", fontSize: 32, mb: 1 }} />
               <Typography variant="h6" gutterBottom>
-                Imaging Viewer
+                Imaging viewer
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                 Browse studies, inspect NIfTI series and segmentation overlays, and run AI-assisted
@@ -66,14 +74,21 @@ export function DashboardPage() {
           </Card>
         </Grid>
         <Grid item xs={12} md={6}>
-          <Card sx={{ height: "100%", "&:hover": { borderColor: "secondary.main" } }}>
+          <Card
+            sx={{
+              height: "100%",
+              borderColor: alpha(tokens.violet, 0.18),
+              transition: "border-color 200ms ease",
+              "&:hover": { borderColor: alpha(tokens.violet, 0.5) },
+            }}
+          >
             <CardContent sx={{ p: 3 }}>
-              <ModelTrainingIcon sx={{ color: "secondary.main", fontSize: 36, mb: 1 }} />
+              <ModelTrainingIcon sx={{ color: "secondary.main", fontSize: 32, mb: 1 }} />
               <Typography variant="h6" gutterBottom>
-                Model Training
+                Model training
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Launch retraining runs and review validation results — segmentation, classification and
+                Launch retraining runs and review validation results: segmentation, classification and
                 calibration metrics for every model version.
               </Typography>
               <Button component={Link} to="/admin/training" variant="outlined" color="secondary">

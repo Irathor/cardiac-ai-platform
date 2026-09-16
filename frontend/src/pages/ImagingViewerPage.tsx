@@ -31,6 +31,7 @@ import {
 } from "../api/imaging";
 import { LoginCard } from "../components/LoginCard";
 import { NiftiViewer } from "../components/NiftiViewer";
+import { heroSurface } from "../theme";
 
 const ANALYSIS_STATUS_COLOR: Record<string, "default" | "info" | "success" | "error"> = {
   QUEUED: "default",
@@ -186,7 +187,7 @@ export function ImagingViewerPage() {
                   <CardContent>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                       <Typography variant="subtitle1">
-                        AI analysis — {analysis.status}
+                        AI analysis
                         {analysis.model_version ? ` (${analysis.model_version})` : ""}
                       </Typography>
                       <Chip
@@ -270,8 +271,11 @@ export function ImagingViewerPage() {
               <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                 {viewerError && <Alert severity="error">{viewerError}</Alert>}
                 {seriesBlob && (
+                  // The volume viewer is the one thing this screen is for —
+                  // it gets the sole hero treatment on the page; everything
+                  // around it (series list, biomarker chips) stays quiet.
                   <Fade in>
-                    <Card sx={{ overflow: "hidden" }}>
+                    <Card sx={{ ...heroSurface("cyan"), overflow: "hidden" }}>
                       <Box sx={{ height: 480 }}>
                         <NiftiViewer seriesBlob={seriesBlob} maskBlob={maskBlob} />
                       </Box>

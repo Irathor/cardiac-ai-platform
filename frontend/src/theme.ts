@@ -1,56 +1,113 @@
 import { alpha, createTheme } from "@mui/material/styles";
+import type { CSSObject } from "@mui/material/styles";
 
 /**
- * Futuristic-medical dark theme — deep navy "command-center" background with
- * a cyan primary accent (clinical/tech) and a restrained violet secondary.
- * Semantic status colors (success/warning/error) stay close to their
- * conventional hues on purpose: they carry real meaning here (failed
- * training runs, anatomical violations, high-confidence errors) and must
- * never be sacrificed for aesthetics.
+ * "AI-Ops cardiac" dark theme — see docs/epics/EPIC-10-rediseno-visual-frontend.md
+ * for the full design-token rationale (two-pass frontend-design process,
+ * critique notes, before/after).
+ *
+ * Two structural ideas carry the whole redesign instead of one repeated
+ * card style everywhere:
+ *
+ * 1. Domain-coded accent — cyan always means "looking at a patient"
+ *    (imaging/clinical surfaces: the viewer, biomarkers, segmentation),
+ *    violet always means "looking at the model" (MLOps surfaces: training
+ *    runs, model versions, calibration). The color carries information,
+ *    it isn't picked per-component for variety.
+ * 2. Two elevation tiers, used deliberately — "quiet" (flat, hairline
+ *    border, no glow: tables, lists, secondary panels — the majority of
+ *    the UI) and "hero" (raised surface + directional glow, reserved for
+ *    the one focal element per screen: the volume viewer, the in-flight
+ *    training run, the leading metric). Never both tiers look the same,
+ *    and never more than one hero per screen.
  */
+
+export const tokens = {
+  bgVoid: "#060910",
+  surface: "#0d1524",
+  surfaceRaised: "#131f34",
+  cyan: "#2dd9e8",
+  cyanDark: "#0ba9ba",
+  violet: "#8b7cf6",
+  violetDark: "#5d4fd1",
+  line: "rgba(148, 163, 184, 0.09)",
+  textPrimary: "#e7edf6",
+  textSecondary: "#8fa0bd",
+};
+
+export type Accent = "cyan" | "violet";
+
+const accentColor: Record<Accent, string> = { cyan: tokens.cyan, violet: tokens.violet };
+
+/** Flat, quiet tier — the default for tables, lists, secondary panels. No glow, no lift. */
+export function quietSurface(): CSSObject {
+  return {
+    backgroundColor: tokens.surface,
+    border: `1px solid ${tokens.line}`,
+    borderRadius: "10px",
+    boxShadow: "none",
+  };
+}
+
+/** Hero tier — reserved for the single focal element on a screen. Raised surface + directional glow. */
+export function heroSurface(accent: Accent = "cyan"): CSSObject {
+  const c = accentColor[accent];
+  return {
+    backgroundColor: tokens.surfaceRaised,
+    border: `1px solid ${alpha(c, 0.4)}`,
+    borderRadius: "16px",
+    boxShadow: `0 0 0 1px ${alpha(c, 0.06)}, 0 24px 64px -28px ${alpha(c, 0.55)}`,
+  };
+}
+
 export const theme = createTheme({
   palette: {
     mode: "dark",
-    primary: { main: "#22d3ee", light: "#67e8f9", dark: "#0891b2", contrastText: "#04121a" },
-    secondary: { main: "#818cf8", light: "#a5b4fc", dark: "#5b52d6", contrastText: "#0a0e1a" },
+    primary: { main: tokens.cyan, light: "#7de9f0", dark: tokens.cyanDark, contrastText: "#03141a" },
+    secondary: { main: tokens.violet, light: "#ab9ffb", dark: tokens.violetDark, contrastText: "#0b0a1f" },
     success: { main: "#22c55e", light: "#4ade80", dark: "#15803d", contrastText: "#04140a" },
     warning: { main: "#f59e0b", light: "#fbbf24", dark: "#b45309", contrastText: "#1a1102" },
     error: { main: "#ef4444", light: "#f87171", dark: "#b91c1c" },
-    background: { default: "#0a0e1a", paper: "#101a2c" },
-    divider: alpha("#22d3ee", 0.12),
-    text: { primary: "#e6edf7", secondary: "#93a4bf" },
+    background: { default: tokens.bgVoid, paper: tokens.surface },
+    divider: tokens.line,
+    text: { primary: tokens.textPrimary, secondary: tokens.textSecondary },
   },
   shape: { borderRadius: 10 },
   typography: {
     fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-    h3: { fontWeight: 700, letterSpacing: -0.5 },
-    h4: { fontWeight: 700, letterSpacing: -0.25 },
+    // Space Grotesk is reserved for page titles and hero numerals only — it
+    // never runs into body copy or small labels, so it reads as a display
+    // role rather than a themed re-skin of every string in the app.
+    h3: { fontFamily: '"Space Grotesk", "Inter", sans-serif', fontWeight: 600, letterSpacing: -0.3 },
+    h4: { fontFamily: '"Space Grotesk", "Inter", sans-serif', fontWeight: 600, letterSpacing: -0.2 },
     h5: { fontWeight: 700 },
     h6: { fontWeight: 600 },
     subtitle1: { fontWeight: 600 },
-    subtitle2: { fontWeight: 600, color: "#93a4bf" },
+    subtitle2: { fontWeight: 600, color: tokens.textSecondary },
     button: { fontWeight: 600, textTransform: "none" },
   },
   components: {
     MuiCssBaseline: {
       styleOverrides: {
         body: {
-          backgroundColor: "#0a0e1a",
-          backgroundImage:
-            "radial-gradient(circle at 12% -10%, rgba(34,211,238,0.09), transparent 40%), " +
-            "radial-gradient(circle at 88% 10%, rgba(129,140,248,0.08), transparent 40%)",
+          backgroundColor: tokens.bgVoid,
+          backgroundImage: `radial-gradient(circle at 15% -12%, ${alpha(tokens.cyan, 0.1)}, transparent 42%)`,
           backgroundAttachment: "fixed",
           minHeight: "100vh",
         },
-        "::selection": { backgroundColor: alpha("#22d3ee", 0.35) },
+        "::selection": { backgroundColor: alpha(tokens.cyan, 0.32) },
+        "*:focus-visible": {
+          outline: `2px solid ${tokens.cyan}`,
+          outlineOffset: "2px",
+        },
       },
     },
     MuiAppBar: {
       styleOverrides: {
         root: {
-          backgroundColor: alpha("#0f1729", 0.78),
-          backdropFilter: "blur(12px)",
-          borderBottom: `1px solid ${alpha("#22d3ee", 0.14)}`,
+          backgroundColor: alpha("#0a1220", 0.82),
+          backdropFilter: "blur(14px)",
+          borderBottom: `1px solid ${tokens.line}`,
           boxShadow: "none",
         },
       },
@@ -62,30 +119,36 @@ export const theme = createTheme({
     },
     MuiCard: {
       styleOverrides: {
-        root: {
-          backgroundColor: alpha("#101a2c", 0.72),
-          border: `1px solid ${alpha("#22d3ee", 0.12)}`,
-          backdropFilter: "blur(6px)",
-          transition: "border-color 200ms ease, box-shadow 200ms ease",
-        },
+        // Cards default to the quiet tier; call sites opt into the hero
+        // tier explicitly via `sx={heroSurface(...)}` when they hold the
+        // one focal element on their screen.
+        root: { ...quietSurface(), transition: "border-color 200ms ease" },
       },
     },
     MuiButton: {
       styleOverrides: {
         root: { borderRadius: 8, fontWeight: 600 },
         containedPrimary: {
-          backgroundImage: "linear-gradient(135deg, #22d3ee, #0891b2)",
-          color: "#04121a",
-          boxShadow: "0 0 0 rgba(34,211,238,0)",
-          transition: "box-shadow 200ms ease, transform 150ms ease",
+          backgroundImage: `linear-gradient(135deg, ${tokens.cyan}, ${tokens.cyanDark})`,
+          color: "#03141a",
+          transition: "box-shadow 200ms ease",
           "&:hover": {
-            boxShadow: "0 0 18px rgba(34,211,238,0.45)",
-            backgroundImage: "linear-gradient(135deg, #22d3ee, #0891b2)",
+            boxShadow: `0 0 20px ${alpha(tokens.cyan, 0.4)}`,
+            backgroundImage: `linear-gradient(135deg, ${tokens.cyan}, ${tokens.cyanDark})`,
           },
         },
+        containedSecondary: {
+          backgroundImage: `linear-gradient(135deg, ${tokens.violet}, ${tokens.violetDark})`,
+          transition: "box-shadow 200ms ease",
+          "&:hover": { boxShadow: `0 0 20px ${alpha(tokens.violet, 0.4)}` },
+        },
         outlined: {
-          borderColor: alpha("#22d3ee", 0.4),
-          "&:hover": { borderColor: "#22d3ee", backgroundColor: alpha("#22d3ee", 0.06) },
+          borderColor: alpha(tokens.cyan, 0.4),
+          "&:hover": { borderColor: tokens.cyan, backgroundColor: alpha(tokens.cyan, 0.06) },
+        },
+        outlinedSecondary: {
+          borderColor: alpha(tokens.violet, 0.4),
+          "&:hover": { borderColor: tokens.violet, backgroundColor: alpha(tokens.violet, 0.08) },
         },
       },
     },
@@ -96,7 +159,7 @@ export const theme = createTheme({
     },
     MuiTabs: {
       styleOverrides: {
-        indicator: { height: 3, borderRadius: 3, backgroundColor: "#22d3ee" },
+        indicator: { height: 3, borderRadius: 3, backgroundColor: tokens.cyan },
       },
     },
     MuiTab: {
@@ -104,22 +167,22 @@ export const theme = createTheme({
         root: {
           textTransform: "none",
           fontWeight: 600,
-          color: "#93a4bf",
+          color: tokens.textSecondary,
           transition: "color 200ms ease",
-          "&.Mui-selected": { color: "#22d3ee" },
+          "&.Mui-selected": { color: tokens.cyan },
         },
       },
     },
     MuiTableCell: {
       styleOverrides: {
-        root: { borderColor: alpha("#22d3ee", 0.08) },
+        root: { borderColor: tokens.line },
+        // Sentence case, not the tracked-out ALL-CAPS eyebrow — hierarchy
+        // comes from weight and color, not shouting.
         head: {
           fontWeight: 700,
-          color: "#93a4bf",
-          backgroundColor: alpha("#0f1729", 0.55),
-          textTransform: "uppercase",
-          fontSize: "0.72rem",
-          letterSpacing: 0.4,
+          color: tokens.textSecondary,
+          backgroundColor: alpha("#0a1220", 0.5),
+          fontSize: "0.78rem",
         },
       },
     },
@@ -130,11 +193,11 @@ export const theme = createTheme({
           transition: "background-color 150ms ease, border-color 150ms ease",
           borderLeft: "3px solid transparent",
           "&.Mui-selected": {
-            backgroundColor: alpha("#22d3ee", 0.12),
-            borderLeft: "3px solid #22d3ee",
+            backgroundColor: alpha(tokens.cyan, 0.12),
+            borderLeft: `3px solid ${tokens.cyan}`,
           },
-          "&.Mui-selected:hover": { backgroundColor: alpha("#22d3ee", 0.16) },
-          "&:hover": { backgroundColor: alpha("#22d3ee", 0.06) },
+          "&.Mui-selected:hover": { backgroundColor: alpha(tokens.cyan, 0.16) },
+          "&:hover": { backgroundColor: alpha(tokens.cyan, 0.06) },
         },
       },
     },
@@ -142,13 +205,13 @@ export const theme = createTheme({
       styleOverrides: {
         root: {
           transition: "box-shadow 150ms ease",
-          "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: "#22d3ee" },
+          "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderColor: tokens.cyan },
         },
       },
     },
     MuiInputLabel: {
       styleOverrides: {
-        root: { "&.Mui-focused": { color: "#22d3ee" } },
+        root: { "&.Mui-focused": { color: tokens.cyan } },
       },
     },
     MuiAlert: {
@@ -161,17 +224,17 @@ export const theme = createTheme({
 
 /** Shared recharts colors so every chart in the app reads from one palette. */
 export const chartColors = {
-  primary: "#22d3ee",
-  secondary: "#818cf8",
+  primary: tokens.cyan,
+  secondary: tokens.violet,
   tertiary: "#f59e0b",
   success: "#34d399",
   error: "#f87171",
   info: "#38bdf8",
   grid: "rgba(148, 163, 184, 0.15)",
-  axis: "#93a4bf",
+  axis: tokens.textSecondary,
   reference: "#64748b",
-  tooltipBg: "#101a2c",
-  tooltipBorder: "rgba(34, 211, 238, 0.25)",
+  tooltipBg: tokens.surfaceRaised,
+  tooltipBorder: alpha(tokens.cyan, 0.3),
 };
 
 export const categoricalChartColors = [
@@ -191,8 +254,8 @@ export const chartTooltipStyle = {
     border: `1px solid ${chartColors.tooltipBorder}`,
     borderRadius: 8,
   },
-  labelStyle: { color: "#e6edf7" },
-  itemStyle: { color: "#e6edf7" },
+  labelStyle: { color: tokens.textPrimary },
+  itemStyle: { color: tokens.textPrimary },
 };
 
 export const chartLegendStyle = { wrapperStyle: { color: chartColors.axis, fontSize: 13 } };

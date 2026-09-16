@@ -1,19 +1,45 @@
+/* Double-beat rhythm (lub-dub) instead of a generic single pulse — the one
+   motion device in the app is grounded in the cardiac subject matter, and it
+   only ever marks a true "live" state (backend online, a run in flight). */
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.45);
+    box-shadow: 0 0 0 0 rgba(45, 217, 232, 0.5);
   }
-  50% {
-    box-shadow: 0 0 0 6px rgba(34, 211, 238, 0);
+  8% {
+    box-shadow: 0 0 0 5px rgba(45, 217, 232, 0);
+  }
+  16% {
+    box-shadow: 0 0 0 0 rgba(45, 217, 232, 0.5);
+  }
+  30% {
+    box-shadow: 0 0 0 7px rgba(45, 217, 232, 0);
   }
 }
 
 @keyframes pulse-glow-warning {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
   }
-  50% {
-    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+  8% {
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0);
+  }
+  16% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+  }
+  30% {
+    box-shadow: 0 0 0 7px rgba(245, 158, 11, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

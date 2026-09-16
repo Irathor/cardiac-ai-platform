@@ -47,6 +47,7 @@ import { SegmentationTab } from "../components/training/SegmentationTab";
 import { SummaryTab } from "../components/training/SummaryTab";
 import { ValidationTab } from "../components/training/ValidationTab";
 import { LoginCard } from "../components/LoginCard";
+import { heroSurface } from "../theme";
 
 const MODEL_TYPE_OPTIONS: Array<{ value: TrainingModelType; label: string }> = [
   { value: "NEAREST_CENTROID", label: "Biomarker classifier (nearest-centroid)" },
@@ -235,7 +236,10 @@ export function ModelTrainingPage() {
       {token && (
         <Fade in timeout={400}>
           <Stack spacing={4} sx={{ mt: 2 }}>
-            <Card>
+            {/* Retraining is the one action this page is built around — it
+                gets the sole hero treatment; the history list and results
+                below stay on the quiet tier. */}
+            <Card sx={heroSurface("violet")}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
                   Retrain
@@ -321,19 +325,15 @@ export function ModelTrainingPage() {
                 {activeRunQuery.data && (
                   <Alert severity={activeRunQuery.data.status === "FAILED" ? "error" : "info"} sx={{ mt: 2 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <span>
-                        Run {activeRunQuery.data.id} — {activeRunQuery.data.status}
-                        {activeRunQuery.data.status === "FAILED" && activeRunQuery.data.error_message
-                          ? `: ${activeRunQuery.data.error_message}`
-                          : ""}
-                      </span>
-                      {isRunInFlight && (
-                        <Chip
-                          size="small"
-                          label={activeRunQuery.data.status}
-                          color={RUN_STATUS_COLOR[activeRunQuery.data.status as RunStatus]}
-                          sx={{ animation: "pulse-glow 1.8s ease-in-out infinite" }}
-                        />
+                      <span>Run {activeRunQuery.data.id}</span>
+                      <Chip
+                        size="small"
+                        label={activeRunQuery.data.status}
+                        color={RUN_STATUS_COLOR[activeRunQuery.data.status as RunStatus]}
+                        sx={isRunInFlight ? { animation: "pulse-glow 1.8s ease-in-out infinite" } : undefined}
+                      />
+                      {activeRunQuery.data.status === "FAILED" && activeRunQuery.data.error_message && (
+                        <span>{activeRunQuery.data.error_message}</span>
                       )}
                     </Stack>
                   </Alert>
@@ -356,7 +356,18 @@ export function ModelTrainingPage() {
                       >
                         <ListItemText
                           primary={version.name}
-                          secondary={`${version.status} — ${new Date(version.created_at).toLocaleString()}`}
+                          secondary={
+                            <Stack direction="row" spacing={1} alignItems="center" component="span">
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={version.status}
+                                color={version.status === "FAILED" ? "error" : "default"}
+                                sx={{ height: 18, fontSize: "0.68rem" }}
+                              />
+                              <Box component="span">{new Date(version.created_at).toLocaleString()}</Box>
+                            </Stack>
+                          }
                         />
                       </ListItemButton>
                     ))}

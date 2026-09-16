@@ -1,5 +1,7 @@
 import { Alert, Box, Button, Card, CardContent, Fade, Stack, TextField, Typography } from "@mui/material";
 
+import { heroSurface } from "../theme";
+
 interface LoginCardProps {
   title: string;
   email: string;
@@ -15,9 +17,13 @@ export function LoginCard({ title, email, password, error, onEmailChange, onPass
   return (
     <Fade in timeout={400}>
       <Box sx={{ display: "flex", justifyContent: "center", mt: 6 }}>
-        <Card sx={{ width: "100%", maxWidth: 400 }}>
+        <Card sx={{ ...heroSurface("cyan"), width: "100%", maxWidth: 400 }}>
           <CardContent sx={{ p: 4 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ fontFamily: '"Space Grotesk", "Inter", sans-serif', fontWeight: 600 }}
+            >
               {title}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
