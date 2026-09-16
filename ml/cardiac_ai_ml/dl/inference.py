@@ -79,19 +79,24 @@ class Cnn3dDiagnosisPrediction:
         return self.probabilities[self.predicted_class]
 
 
-@torch.no_grad()
-def predict_diagnosis(model: torch.nn.Module, ed_image_path: str, es_image_path: str) -> Cnn3dDiagnosisPrediction:
-    """Runs the real CNN3D over one patient's ED+ES pair (raw cine-MRI
-    images — no segmentation involved), using the exact same preprocessing
-    `AcdcVolumeDataset` uses for training/evaluation (see
-    `classification_dataset.py`), just applied to a real uploaded series
-    instead of an ACDC dataset path. `model` must already live on a real CUDA
-    device (see `load_cnn3d_checkpoint`/`_require_cuda_device`)."""
-    device = next(model.parameters()).device
+def build_cnn3d_volume_tensor(ed_image_path: str, es_image_path: str, device: torch.device) -> torch.Tensor:
+    """Preprocesses one patient's ED+ES pair into the (1, 2, X, Y, Z) tensor
+    the CNN3D expects, exposed separately from `predict_diagnosis` so a
+    caller that also needs Grad-CAM on the exact same input (see
+    `run_inference_job._run_classify`) builds this tensor once and reuses it
+    for both the classification forward pass and `explainability.grad_cam_3d`,
+    instead of each preprocessing the series from disk on its own."""
     ed_volume = _load_and_prepare_volume(ed_image_path, DEFAULT_TARGET_SPACING_XY, DEFAULT_VOLUME_SIZE)
     es_volume = _load_and_prepare_volume(es_image_path, DEFAULT_TARGET_SPACING_XY, DEFAULT_VOLUME_SIZE)
-    volume_tensor = torch.from_numpy(np.stack([ed_volume, es_volume], axis=0)).unsqueeze(0).to(device)
+    return torch.from_numpy(np.stack([ed_volume, es_volume], axis=0)).unsqueeze(0).to(device)
 
+
+@torch.no_grad()
+def predict_diagnosis_from_volume(model: torch.nn.Module, volume_tensor: torch.Tensor) -> Cnn3dDiagnosisPrediction:
+    """Same classification forward pass as `predict_diagnosis`, but taking an
+    already-preprocessed volume tensor (see `build_cnn3d_volume_tensor`)
+    instead of image paths, so callers that need the identical tensor for
+    something else too (Grad-CAM) don't preprocess twice."""
     logits = model(volume_tensor)
     probabilities = torch.softmax(logits, dim=1).squeeze(0).cpu().numpy()
     predicted_index = int(probabilities.argmax())
@@ -101,6 +106,18 @@ def predict_diagnosis(model: torch.nn.Module, ed_image_path: str, es_image_path:
             label: float(p) for label, p in zip(DIAGNOSIS_CLASSES, probabilities, strict=True)
         },
     )
+
+
+def predict_diagnosis(model: torch.nn.Module, ed_image_path: str, es_image_path: str) -> Cnn3dDiagnosisPrediction:
+    """Runs the real CNN3D over one patient's ED+ES pair (raw cine-MRI
+    images — no segmentation involved), using the exact same preprocessing
+    `AcdcVolumeDataset` uses for training/evaluation (see
+    `classification_dataset.py`), just applied to a real uploaded series
+    instead of an ACDC dataset path. `model` must already live on a real CUDA
+    device (see `load_cnn3d_checkpoint`/`_require_cuda_device`)."""
+    device = next(model.parameters()).device
+    volume_tensor = build_cnn3d_volume_tensor(ed_image_path, es_image_path, device)
+    return predict_diagnosis_from_volume(model, volume_tensor)
 
 
 @torch.no_grad()

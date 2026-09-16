@@ -94,17 +94,46 @@ def _post(path: str, payload: dict) -> dict:
 
 
 def classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes) -> dict:
-    """Returns {"predicted_class": str, "probabilities": dict[str, float]}
-    from a real forward pass of the production CNN3D checkpoint, run on the
-    host GPU runner."""
+    """Returns {"predicted_class": str, "probabilities": dict[str, float],
+    "gradcam_attribution": np.ndarray | None, "gradcam_layer_name": str | None,
+    "gradcam_error": str | None} from a real forward pass of the production
+    CNN3D checkpoint, run on the host GPU runner.
+
+    EPIC-3: the runner's `_run_classify` computes Grad-CAM in the same pass
+    as the classification (see docs/epics/EPIC-3-gradcam-integrado-flujo-servido.md)
+    and, on success, includes `gradcam_attribution_base64` (float32
+    C-contiguous bytes) / `gradcam_attribution_shape` / `gradcam_layer_name`
+    in the JSON — decoded here with the exact same
+    `np.frombuffer(...).reshape(...)` pattern `segment_unet` already uses for
+    `mask_base64`/`mask_shape`. If Grad-CAM itself failed (classification
+    still succeeded), those three keys are absent and `gradcam_error` carries
+    the reason instead — both are optional, never required, on the wire.
+    """
     settings = get_settings()
     ed_abs, ed_rel = _stage_bytes_for_runner(settings.data_root, ed_bytes)
     es_abs, es_rel = _stage_bytes_for_runner(settings.data_root, es_bytes)
     try:
-        return _post("/inference/classify", {"ed_relative_path": ed_rel, "es_relative_path": es_rel})
+        body = _post("/inference/classify", {"ed_relative_path": ed_rel, "es_relative_path": es_rel})
     finally:
         _cleanup_staged_file(ed_abs)
         _cleanup_staged_file(es_abs)
+
+    result = {
+        "predicted_class": body["predicted_class"],
+        "probabilities": body["probabilities"],
+    }
+    gradcam_base64 = body.get("gradcam_attribution_base64")
+    if gradcam_base64 is not None:
+        raw = base64.b64decode(gradcam_base64)
+        attribution = np.frombuffer(raw, dtype=np.float32).reshape(body["gradcam_attribution_shape"])
+        result["gradcam_attribution"] = attribution
+        result["gradcam_layer_name"] = body.get("gradcam_layer_name")
+        result["gradcam_error"] = None
+    else:
+        result["gradcam_attribution"] = None
+        result["gradcam_layer_name"] = None
+        result["gradcam_error"] = body.get("gradcam_error")
+    return result
 
 
 def segment_unet(*, image_bytes: bytes) -> tuple[np.ndarray, float, float, float]:

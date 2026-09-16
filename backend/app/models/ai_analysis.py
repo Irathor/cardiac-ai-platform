@@ -44,7 +44,23 @@ class AIAnalysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     feature_attributions: Mapped[dict | None] = mapped_column(JSON())
     error_message: Mapped[str | None] = mapped_column(String(2000))
 
+    # EPIC-3: Grad-CAM attribution map for a real CNN3D_CLASSIFICATION run.
+    # Only `storage_key` is persisted here (the (X,Y,Z) float32 array itself
+    # lives in MinIO as a .npy — see app.services.analysis_service and
+    # app.services.imaging_service.segmentation_storage_key for the exact
+    # same pattern already used for Segmentation.storage_key). `gradcam_error`
+    # holds an honest reason when Grad-CAM itself failed but the
+    # classification succeeded (see CNN3D_NO_FEATURE_ATTRIBUTION_REASON's
+    # sibling reasoning in app.services.analysis_service) — the analysis
+    # still completes either way, this is never a reason to fail it.
+    gradcam_storage_key: Mapped[str | None] = mapped_column(String(500))
+    gradcam_error: Mapped[str | None] = mapped_column(String(2000))
+
     requested_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     imaging_study: Mapped["ImagingStudy"] = relationship()
+
+    @property
+    def gradcam_available(self) -> bool:
+        return self.gradcam_storage_key is not None

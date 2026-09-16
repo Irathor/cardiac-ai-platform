@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_roles
@@ -17,6 +18,8 @@ router = APIRouter()
 
 _STUDY_NOT_FOUND = "Study not found"
 _ANALYSIS_NOT_FOUND = "AI analysis not found"
+_GRADCAM_NOT_AVAILABLE = "Grad-CAM attribution map not available for this analysis"
+_NPY_CONTENT_TYPE = "application/octet-stream"
 
 
 def _load_study_for_viewer(db: Session, study_id: uuid.UUID, viewer: User) -> ImagingStudy:
@@ -51,15 +54,35 @@ def list_analyses(
     return [AIAnalysisOut.model_validate(a) for a in analyses]
 
 
+def _load_analysis(db: Session, analysis_id: uuid.UUID, viewer: User):
+    analysis = analysis_repository.get_by_id(db, analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_ANALYSIS_NOT_FOUND)
+    # An analysis is only reachable through a study the viewer is allowed to see —
+    # same rule for reading the analysis itself and for reading its Grad-CAM map.
+    _load_study_for_viewer(db, analysis.imaging_study_id, viewer)
+    return analysis
+
+
 @router.get("/analyses/{analysis_id}")
 def get_analysis(
     analysis_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles(RoleName.ADMIN, RoleName.DOCTOR)),
 ) -> AIAnalysisOut:
-    analysis = analysis_repository.get_by_id(db, analysis_id)
-    if analysis is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_ANALYSIS_NOT_FOUND)
-    # An analysis is only reachable through a study the viewer is allowed to see.
-    _load_study_for_viewer(db, analysis.imaging_study_id, current_user)
+    analysis = _load_analysis(db, analysis_id, current_user)
     return AIAnalysisOut.model_validate(analysis)
+
+
+@router.get("/analyses/{analysis_id}/gradcam")
+def get_analysis_gradcam(
+    analysis_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(RoleName.ADMIN, RoleName.DOCTOR)),
+) -> Response:
+    analysis = _load_analysis(db, analysis_id, current_user)
+    if analysis.gradcam_storage_key is None:
+        detail = analysis.gradcam_error or _GRADCAM_NOT_AVAILABLE
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+    data = analysis_service.get_gradcam_file_bytes(analysis)
+    return Response(content=data, media_type=_NPY_CONTENT_TYPE)

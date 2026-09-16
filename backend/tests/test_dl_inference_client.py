@@ -48,11 +48,59 @@ def test_classify_cnn3d_stages_and_cleans_up_both_files(monkeypatch, tmp_path):
 
     result = dl_inference_client.classify_cnn3d(ed_bytes=b"ed-bytes", es_bytes=b"es-bytes")
 
-    assert result == {"predicted_class": "NORMAL", "probabilities": {"NORMAL": 1.0}}
+    # No gradcam_* keys came back on the wire (the runner didn't include
+    # them here) — classify_cnn3d treats them as optional, not required.
+    assert result == {
+        "predicted_class": "NORMAL",
+        "probabilities": {"NORMAL": 1.0},
+        "gradcam_attribution": None,
+        "gradcam_layer_name": None,
+        "gradcam_error": None,
+    }
     assert seen_payload["ed_relative_path"].startswith("tmp/inference/")
     # Cleaned up after the call returns.
     assert not (tmp_path / seen_payload["ed_relative_path"]).exists()
     assert not (tmp_path / seen_payload["es_relative_path"]).exists()
+
+
+def test_classify_cnn3d_decodes_gradcam_attribution_when_present(monkeypatch, tmp_path):
+    _patch_data_root(monkeypatch, tmp_path)
+    attribution = np.random.default_rng(0).random((4, 4, 2)).astype(np.float32)
+
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse({
+            "predicted_class": "NORMAL",
+            "probabilities": {"NORMAL": 1.0},
+            "gradcam_attribution_base64": base64.b64encode(attribution.tobytes()).decode("ascii"),
+            "gradcam_attribution_shape": list(attribution.shape),
+            "gradcam_layer_name": "features.3.2",
+        })
+
+    monkeypatch.setattr(dl_inference_client.httpx, "post", fake_post)
+
+    result = dl_inference_client.classify_cnn3d(ed_bytes=b"ed", es_bytes=b"es")
+
+    np.testing.assert_allclose(result["gradcam_attribution"], attribution)
+    assert result["gradcam_layer_name"] == "features.3.2"
+    assert result["gradcam_error"] is None
+
+
+def test_classify_cnn3d_surfaces_gradcam_error_when_runner_reports_one(monkeypatch, tmp_path):
+    _patch_data_root(monkeypatch, tmp_path)
+
+    def fake_post(url, json=None, timeout=None):
+        return _FakeResponse({
+            "predicted_class": "NORMAL",
+            "probabilities": {"NORMAL": 1.0},
+            "gradcam_error": "layer hook produced a zero gradient",
+        })
+
+    monkeypatch.setattr(dl_inference_client.httpx, "post", fake_post)
+
+    result = dl_inference_client.classify_cnn3d(ed_bytes=b"ed", es_bytes=b"es")
+
+    assert result["gradcam_attribution"] is None
+    assert result["gradcam_error"] == "layer hook produced a zero gradient"
 
 
 def test_segment_unet_decodes_base64_mask_and_spacing(monkeypatch, tmp_path):

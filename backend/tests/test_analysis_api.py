@@ -2,6 +2,7 @@
 request to trigger an analysis completes synchronously within the same test
 — no real Redis/worker needed. Real async execution against a live worker is
 verified separately inside Docker Compose."""
+import io
 import tempfile
 from pathlib import Path
 
@@ -260,3 +261,147 @@ def test_cnn3d_inference_failure_marks_the_analysis_failed_not_crashed(client, d
     result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
     assert result["status"] == "FAILED"
     assert "host GPU runner" in result["error_message"]
+
+
+def _setup_cnn3d_study(client, db_session, demo_org, token: str, study):
+    volume = np.zeros((6, 6, 3), dtype=np.int16)
+    for phase in ("ED", "ES"):
+        upload = client.post(
+            f"/api/v1/studies/{study.id}/series",
+            headers=_auth(token),
+            files={"file": (f"{phase}.nii.gz", _nifti_bytes(volume), "application/octet-stream")},
+            data={"series_type": "CINE_SHORT_AXIS", "phase": phase},
+        )
+        assert upload.status_code == 201
+    make_model_version(db_session, name=MODEL_NAME_CNN3D, status="PRODUCTION")
+
+
+def test_analysis_persists_and_serves_gradcam_attribution_map(client, db_session, demo_org, monkeypatch):
+    """EPIC-3: the runner's classify response can include a Grad-CAM
+    attribution array alongside the classification — execute_analysis
+    persists it to object storage and GET /analyses/{id}/gradcam serves the
+    exact same array back."""
+    doctor = make_user(db_session, demo_org, email="doc-gradcam-1@cardiacai-test.dev", role="DOCTOR")
+    patient = make_patient(db_session, demo_org, identifier="PT-GRADCAM-1")
+    assign_doctor(db_session, patient=patient, doctor=doctor)
+    study = make_study(db_session, patient=patient)
+    token = _login(client, "doc-gradcam-1@cardiacai-test.dev")
+    _setup_cnn3d_study(client, db_session, demo_org, token, study)
+
+    attribution = np.random.default_rng(0).random((4, 4, 2)).astype(np.float32)
+
+    def fake_classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes):
+        return {
+            "predicted_class": "DILATED_CARDIOMYOPATHY",
+            "probabilities": {
+                "NORMAL": 0.1, "DILATED_CARDIOMYOPATHY": 0.6, "HYPERTROPHIC_CARDIOMYOPATHY": 0.1,
+                "MYOCARDIAL_INFARCTION": 0.1, "ABNORMAL_RIGHT_VENTRICLE": 0.1,
+            },
+            "gradcam_attribution": attribution,
+            "gradcam_layer_name": "features.3.2",
+            "gradcam_error": None,
+        }
+
+    monkeypatch.setattr(analysis_service.dl_inference_client, "classify_cnn3d", fake_classify_cnn3d)
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["status"] == "COMPLETED"
+    assert result["gradcam_available"] is True
+    assert result["gradcam_error"] is None
+
+    gradcam_response = client.get(f"/api/v1/analyses/{analysis_id}/gradcam", headers=_auth(token))
+    assert gradcam_response.status_code == 200
+    assert gradcam_response.headers["content-type"] == "application/octet-stream"
+    decoded = np.load(io.BytesIO(gradcam_response.content))
+    np.testing.assert_allclose(decoded, attribution)
+
+
+def test_analysis_completes_and_reports_honest_gradcam_error_when_gradcam_fails(
+    client, db_session, demo_org, monkeypatch
+):
+    """A Grad-CAM-only failure never fails the whole analysis (contract point
+    4) — the classification is COMPLETED, gradcam_available is False, and the
+    gradcam endpoint responds honestly (404) instead of a fake empty 200."""
+    doctor = make_user(db_session, demo_org, email="doc-gradcam-2@cardiacai-test.dev", role="DOCTOR")
+    patient = make_patient(db_session, demo_org, identifier="PT-GRADCAM-2")
+    assign_doctor(db_session, patient=patient, doctor=doctor)
+    study = make_study(db_session, patient=patient)
+    token = _login(client, "doc-gradcam-2@cardiacai-test.dev")
+    _setup_cnn3d_study(client, db_session, demo_org, token, study)
+
+    def fake_classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes):
+        return {
+            "predicted_class": "NORMAL",
+            "probabilities": {"NORMAL": 1.0},
+            "gradcam_attribution": None,
+            "gradcam_layer_name": None,
+            "gradcam_error": "gradient hook produced all-zero activations",
+        }
+
+    monkeypatch.setattr(analysis_service.dl_inference_client, "classify_cnn3d", fake_classify_cnn3d)
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["status"] == "COMPLETED"
+    assert result["gradcam_available"] is False
+    assert "gradient hook produced all-zero activations" in result["gradcam_error"]
+
+    gradcam_response = client.get(f"/api/v1/analyses/{analysis_id}/gradcam", headers=_auth(token))
+    assert gradcam_response.status_code == 404
+    assert "gradient hook produced all-zero activations" in gradcam_response.json()["detail"]
+
+
+def test_analysis_without_gradcam_reports_honest_404_not_fake_success(client, db_session, demo_org):
+    """The tabular nearest-centroid path never computes Grad-CAM at all — no
+    fake 200, and no misleading gradcam_error (nothing failed, it's just not
+    applicable to this model type)."""
+    _doctor, study = _setup_study_with_ed_es(db_session, demo_org, suffix="gradcam3")
+    token = _login(client, "doc-agradcam3@cardiacai-test.dev")
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["status"] == "COMPLETED"
+    assert result["gradcam_available"] is False
+    assert result["gradcam_error"] is None
+
+    gradcam_response = client.get(f"/api/v1/analyses/{analysis_id}/gradcam", headers=_auth(token))
+    assert gradcam_response.status_code == 404
+
+
+def test_unassigned_doctor_cannot_fetch_gradcam_for_someone_elses_analysis(
+    client, db_session, demo_org, monkeypatch
+):
+    make_user(db_session, demo_org, email="stranger-gradcam@cardiacai-test.dev", role="DOCTOR")
+    doctor = make_user(db_session, demo_org, email="doc-gradcam-4@cardiacai-test.dev", role="DOCTOR")
+    patient = make_patient(db_session, demo_org, identifier="PT-GRADCAM-4")
+    assign_doctor(db_session, patient=patient, doctor=doctor)
+    study = make_study(db_session, patient=patient)
+    owner_token = _login(client, "doc-gradcam-4@cardiacai-test.dev")
+    _setup_cnn3d_study(client, db_session, demo_org, owner_token, study)
+
+    attribution = np.zeros((2, 2, 2), dtype=np.float32)
+
+    def fake_classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes):
+        return {
+            "predicted_class": "NORMAL",
+            "probabilities": {"NORMAL": 1.0},
+            "gradcam_attribution": attribution,
+            "gradcam_layer_name": "features.3.2",
+            "gradcam_error": None,
+        }
+
+    monkeypatch.setattr(analysis_service.dl_inference_client, "classify_cnn3d", fake_classify_cnn3d)
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(owner_token))
+    analysis_id = created.json()["id"]
+
+    stranger_token = _login(client, "stranger-gradcam@cardiacai-test.dev")
+    response = client.get(f"/api/v1/analyses/{analysis_id}/gradcam", headers=_auth(stranger_token))
+    assert response.status_code == 404

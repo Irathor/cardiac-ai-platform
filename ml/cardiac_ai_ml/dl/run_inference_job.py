@@ -27,13 +27,45 @@ import base64
 import json
 import sys
 
-from .inference import load_cnn3d_checkpoint, load_unet2d_checkpoint, predict_diagnosis, predict_segmentation_mask
+import numpy as np
+
+from .explainability import grad_cam_3d
+from .inference import (
+    build_cnn3d_volume_tensor,
+    load_cnn3d_checkpoint,
+    load_unet2d_checkpoint,
+    predict_diagnosis_from_volume,
+    predict_segmentation_mask,
+)
 
 
 def _run_classify(args: argparse.Namespace) -> dict:
     model = load_cnn3d_checkpoint(args.weights)
-    prediction = predict_diagnosis(model, args.ed_image, args.es_image)
-    return {"predicted_class": prediction.predicted_class, "probabilities": prediction.probabilities}
+    device = next(model.parameters()).device
+    # Built once and reused for both the classification forward pass and
+    # Grad-CAM below (see EPIC-3's contract) — avoids reloading the
+    # checkpoint or re-preprocessing the same ED/ES series twice.
+    volume_tensor = build_cnn3d_volume_tensor(args.ed_image, args.es_image, device)
+    prediction = predict_diagnosis_from_volume(model, volume_tensor)
+    result = {"predicted_class": prediction.predicted_class, "probabilities": prediction.probabilities}
+
+    try:
+        # target_class_index=None: explains whatever class the model itself
+        # predicted, not one imposed from outside.
+        gradcam_result = grad_cam_3d(model, volume_tensor, target_class_index=None)
+        attribution = np.ascontiguousarray(gradcam_result.attribution, dtype=np.float32)
+        result["gradcam_attribution_base64"] = base64.b64encode(attribution.tobytes()).decode("ascii")
+        result["gradcam_attribution_shape"] = list(attribution.shape)
+        result["gradcam_layer_name"] = gradcam_result.layer_name
+    except Exception as exc:  # noqa: BLE001 — a Grad-CAM failure must never
+        # fail the classification itself: the prediction above is already
+        # valid and useful without its explanation (see EPIC-3's contract,
+        # point 4). Only a failure in the classification forward pass
+        # itself (above, uncaught here) should still fail the whole
+        # subprocess, as before.
+        result["gradcam_error"] = f"{type(exc).__name__}: {exc}"
+
+    return result
 
 
 def _run_segment(args: argparse.Namespace) -> dict:

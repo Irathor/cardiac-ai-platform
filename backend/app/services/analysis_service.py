@@ -5,9 +5,11 @@ QUEUED row and hands off to Celery — it never imports the ml/ package itself.
 `execute_analysis` (called only from app.tasks.analysis_tasks, i.e. from the
 Celery worker) does the actual feature collection and classification.
 """
+import io
 import uuid
 from datetime import datetime, timezone
 
+import numpy as np
 from cardiac_ai_ml.biomarkers import ejection_fraction_percent
 from cardiac_ai_ml.classification import (
     DiagnosisClass,
@@ -33,6 +35,7 @@ from app.repositories import (
 )
 from app.services import dl_inference_client, imaging_service
 from app.services.dl_inference_client import InferenceRunnerError
+from app.storage import object_storage
 
 PENDING_MODEL_VERSION = "pending"
 DEMO_MODEL_VERSION = "demo-heuristic-v1"
@@ -51,6 +54,18 @@ CNN3D_NO_FEATURE_ATTRIBUTION_REASON = (
     "tabular biomarker vector — there is no feature vector to attribute. See "
     "EPIC-3 for real Grad-CAM-based image explainability of this model."
 )
+
+# EPIC-3: why a failed Grad-CAM never fails the whole AIAnalysis — the
+# classification itself is a separate, already-successful forward pass; see
+# docs/epics/EPIC-3-gradcam-integrado-flujo-servido.md point 4. Analogous to
+# CNN3D_NO_FEATURE_ATTRIBUTION_REASON above, but here the reason genuinely
+# varies case to case (layer hook, zero gradient...) so it's worth surfacing
+# per-analysis instead of a single static string.
+_GRADCAM_UNKNOWN_REASON = "no reason reported by the inference runner"
+
+
+def _gradcam_storage_key(analysis_id: uuid.UUID) -> str:
+    return f"analyses/{analysis_id}/gradcam.npy"
 
 
 class MissingPhaseDataError(ValueError):
@@ -156,6 +171,21 @@ def execute_analysis(db: Session, *, analysis_id: uuid.UUID) -> None:
             analysis.confidence = prediction["probabilities"][prediction["predicted_class"]]
             analysis.feature_attributions = None
             analysis.model_version = f"{production_cnn3d.name}@{production_cnn3d.id}"
+
+            gradcam_attribution = prediction.get("gradcam_attribution")
+            if gradcam_attribution is not None:
+                buffer = io.BytesIO()
+                np.save(buffer, np.ascontiguousarray(gradcam_attribution, dtype=np.float32))
+                storage_key = _gradcam_storage_key(analysis.id)
+                object_storage.get_storage().put_bytes(
+                    storage_key, buffer.getvalue(), content_type="application/octet-stream"
+                )
+                analysis.gradcam_storage_key = storage_key
+                analysis.gradcam_error = None
+            else:
+                analysis.gradcam_storage_key = None
+                reason = prediction.get("gradcam_error") or _GRADCAM_UNKNOWN_REASON
+                analysis.gradcam_error = f"Grad-CAM no disponible para este análisis: {reason}"
         else:
             features = collect_features(db, study)
             production_model = model_repository.get_production(db, MODEL_NAME)
@@ -192,3 +222,11 @@ def execute_analysis(db: Session, *, analysis_id: uuid.UUID) -> None:
             event_metadata={"error": str(exc)},
         )
     db.flush()
+
+
+def get_gradcam_file_bytes(analysis: AIAnalysis) -> bytes:
+    """Raises if `analysis.gradcam_storage_key` is None — callers (the
+    `/analyses/{id}/gradcam` endpoint) must check `gradcam_storage_key`
+    first and respond honestly (404 with `gradcam_error` if present) rather
+    than call this at all when there's no map to serve."""
+    return object_storage.get_storage().get_bytes(analysis.gradcam_storage_key)

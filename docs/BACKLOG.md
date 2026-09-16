@@ -7,8 +7,15 @@ Este archivo distingue tres cosas que no son lo mismo (ver `~/.claude/CLAUDE.md`
 
 ## Fast-follows
 
-- Ninguno todavía. (El roadmap de MLOps completo ya está desglosado en Epics propias —
-  ver `docs/epics/EPIC-2-*` a `EPIC-9-*` — en vez de vivir aquí como fast-follow suelto.)
+- **Renderizar el mapa de Grad-CAM en la pantalla de informe del frontend** — EPIC-3 ya
+  expone el dato real y completo vía `GET /analyses/{analysis_id}/gradcam` (array `.npy`,
+  mismo RBAC que el resto del análisis); falta la parte visual (overlay/heatmap sobre la
+  imagen en `ImagingViewerPage`/donde corresponda). Motivo por el que no entró en EPIC-3: el
+  contrato técnico de Shepard decidió que el criterio "visible en el informe" queda
+  satisfecho por la exposición de datos vía API (mismo patrón que `features`/
+  `probabilities`, que tampoco se renderizan server-side), dejando el render explícitamente
+  para un fast-follow — no forma parte del alcance de esta Epic ni de EPIC-10 (rediseño
+  visual), que fue sobre el frontend ya existente, no sobre features nuevas.
 
 ## Niebla — Epics pendientes de decisión previa
 
