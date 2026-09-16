@@ -30,6 +30,12 @@ dl = [
     "tqdm>=4.66,<5",
     "matplotlib>=3.9,<4",
     "pandas>=2.2,<3",
+    # LIME (lime.lime_tabular.LimeTabularExplainer) — used ONLY for the
+    # pedagogical LIME-vs-Shapley comparison panel on the biomarker
+    # classifier (see ADR-3); never for images and never as production
+    # explainability, so it stays in the same optional `dl` extra rather
+    # than the lightweight core dependencies.
+    "lime>=0.2.0.1,<0.3",
 ]
 
 [build-system]
