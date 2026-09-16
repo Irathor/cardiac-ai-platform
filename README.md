@@ -6,6 +6,21 @@
 > This is a research and demonstration platform. It is not a medical device and must never be used
 > to inform real patient care. See [`docs/clinical-limitations.md`](docs/clinical-limitations.md).
 
+## See also
+
+Phases 1-8 below are complete and documented as a changelog in this README (see also
+[`docs/phases.md`](docs/phases.md)). All work from this point forward — the MLOps/AI-ML
+Engineering roadmap (real explainability on imaging models, serving trained models,
+monitoring, drift detection, expanded CI/CD, cloud deployment) — is tracked as Epics and
+ADRs instead of new README phases:
+
+- [`docs/epics/`](docs/epics/) — feature roadmap, one file per Epic.
+- [`docs/adr/`](docs/adr/) — architecture/technical decisions (see
+  [`ADR-1`](docs/adr/ADR-1-adopcion-proceso-epics-adr.md) for why this project now uses two
+  documentation formats side by side).
+- [`docs/BACKLOG.md`](docs/BACKLOG.md) — fast-follows, open directions and deliberately
+  out-of-scope items.
+
 ## Project status
 
 This repository is being built incrementally, phase by phase (see [`docs/phases.md`](docs/phases.md)).
