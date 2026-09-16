@@ -13,7 +13,8 @@ from app.models.imaging_study import ImagingStudy
 from app.models.user import User
 from app.repositories import image_series_repository, segmentation_repository
 from app.schemas.imaging import BiomarkerMeasurementOut, ImageSeriesOut, SegmentationOut
-from app.services import imaging_service, study_service
+from app.services import auto_segmentation_service, imaging_service, study_service
+from app.services.dl_inference_client import InferenceRunnerError
 
 router = APIRouter()
 
@@ -108,6 +109,29 @@ async def upload_segmentation(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
     except imaging_service.SegmentationShapeMismatchError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(segmentation)
+    return SegmentationOut.model_validate(segmentation)
+
+
+@router.post("/series/{series_id}/auto-segmentation", status_code=status.HTTP_201_CREATED)
+def create_auto_segmentation(
+    series_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    # Same RBAC as manually uploading a segmentation (docs/permissions.md) —
+    # auto-segmentation is just another way a Segmentation gets created for a
+    # series, the reviewer of its output is the same role either way.
+    current_user: User = Depends(require_roles(RoleName.ADMIN, RoleName.DOCTOR)),
+) -> SegmentationOut:
+    series = _load_series(db, series_id, current_user)
+    try:
+        segmentation = auto_segmentation_service.generate_auto_segmentation(
+            db, actor=current_user, series=series,
+        )
+    except auto_segmentation_service.ModelNotAvailableError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except InferenceRunnerError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     db.commit()
     db.refresh(segmentation)
     return SegmentationOut.model_validate(segmentation)

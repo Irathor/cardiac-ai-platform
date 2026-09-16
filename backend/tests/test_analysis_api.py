@@ -2,8 +2,15 @@
 request to trigger an analysis completes synchronously within the same test
 — no real Redis/worker needed. Real async execution against a live worker is
 verified separately inside Docker Compose."""
+import tempfile
+from pathlib import Path
+
+import nibabel as nib
+import numpy as np
 import pytest
 
+from app.core.model_registry import MODEL_NAME_CNN3D
+from app.services import analysis_service
 from tests.conftest import (
     assign_doctor,
     make_model_version,
@@ -13,6 +20,18 @@ from tests.conftest import (
     make_study,
     make_user,
 )
+
+
+def _nifti_bytes(array: np.ndarray, spacing: tuple[float, float, float] = (1.0, 1.0, 1.0)) -> bytes:
+    affine = np.diag([*spacing, 1.0]).astype(np.float64)
+    image = nib.Nifti1Image(array.astype(np.int16), affine)
+    with tempfile.NamedTemporaryFile(suffix=".nii.gz", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        nib.save(image, tmp_path)
+        return tmp_path.read_bytes()
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def _login(client, email: str, password: str = "Str0ng-Password!") -> str:
@@ -155,3 +174,89 @@ def test_analysis_uses_the_production_model_when_one_exists(client, db_session, 
     assert result["status"] == "COMPLETED"
     assert result["predicted_class"] == "HYPERTROPHIC_CARDIOMYOPATHY"
     assert str(model_version.id) in result["model_version"]
+
+
+def test_cnn3d_production_model_serves_a_real_image_classification(client, db_session, demo_org, monkeypatch):
+    """EPIC-2 refinement: when the PRODUCTION model is CNN3D_CLASSIFICATION,
+    execute_analysis runs the real image-native forward pass (mocked at the
+    host-runner HTTP boundary here — see test_dl_inference_client.py for the
+    real, unmocked "runner unreachable" case) instead of the tabular
+    nearest-centroid path — no segmentation-derived biomarkers needed at
+    all, and feature_attributions stays honestly null (no tabular feature
+    vector exists for an image-native model)."""
+    doctor = make_user(db_session, demo_org, email="doc-cnn3d@cardiacai-test.dev", role="DOCTOR")
+    patient = make_patient(db_session, demo_org, identifier="PT-CNN3D-1")
+    assign_doctor(db_session, patient=patient, doctor=doctor)
+    study = make_study(db_session, patient=patient)
+    token = _login(client, "doc-cnn3d@cardiacai-test.dev")
+
+    volume = np.zeros((6, 6, 3), dtype=np.int16)
+    for phase in ("ED", "ES"):
+        upload = client.post(
+            f"/api/v1/studies/{study.id}/series",
+            headers=_auth(token),
+            files={"file": (f"{phase}.nii.gz", _nifti_bytes(volume), "application/octet-stream")},
+            data={"series_type": "CINE_SHORT_AXIS", "phase": phase},
+        )
+        assert upload.status_code == 201
+
+    model_version = make_model_version(db_session, name=MODEL_NAME_CNN3D, status="PRODUCTION")
+
+    canned_prediction = {
+        "predicted_class": "DILATED_CARDIOMYOPATHY",
+        "probabilities": {
+            "NORMAL": 0.05, "DILATED_CARDIOMYOPATHY": 0.7, "HYPERTROPHIC_CARDIOMYOPATHY": 0.1,
+            "MYOCARDIAL_INFARCTION": 0.1, "ABNORMAL_RIGHT_VENTRICLE": 0.05,
+        },
+    }
+
+    def fake_classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes):
+        assert ed_bytes  # the real uploaded series bytes were passed through
+        assert es_bytes
+        return canned_prediction
+
+    monkeypatch.setattr(analysis_service.dl_inference_client, "classify_cnn3d", fake_classify_cnn3d)
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["status"] == "COMPLETED"
+    assert result["predicted_class"] == "DILATED_CARDIOMYOPATHY"
+    assert result["probabilities"] == canned_prediction["probabilities"]
+    assert result["confidence"] == pytest.approx(0.7)
+    assert result["features"] is None
+    assert result["feature_attributions"] is None
+    assert str(model_version.id) in result["model_version"]
+
+
+def test_cnn3d_inference_failure_marks_the_analysis_failed_not_crashed(client, db_session, demo_org, monkeypatch):
+    doctor = make_user(db_session, demo_org, email="doc-cnn3d-fail@cardiacai-test.dev", role="DOCTOR")
+    patient = make_patient(db_session, demo_org, identifier="PT-CNN3D-2")
+    assign_doctor(db_session, patient=patient, doctor=doctor)
+    study = make_study(db_session, patient=patient)
+    token = _login(client, "doc-cnn3d-fail@cardiacai-test.dev")
+
+    volume = np.zeros((6, 6, 3), dtype=np.int16)
+    for phase in ("ED", "ES"):
+        client.post(
+            f"/api/v1/studies/{study.id}/series",
+            headers=_auth(token),
+            files={"file": (f"{phase}.nii.gz", _nifti_bytes(volume), "application/octet-stream")},
+            data={"series_type": "CINE_SHORT_AXIS", "phase": phase},
+        )
+    make_model_version(db_session, name=MODEL_NAME_CNN3D, status="PRODUCTION")
+
+    from app.services.dl_inference_client import InferenceRunnerError
+
+    def fake_classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes):
+        raise InferenceRunnerError("host GPU runner is not running")
+
+    monkeypatch.setattr(analysis_service.dl_inference_client, "classify_cnn3d", fake_classify_cnn3d)
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["status"] == "FAILED"
+    assert "host GPU runner" in result["error_message"]

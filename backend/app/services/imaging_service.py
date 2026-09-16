@@ -7,6 +7,7 @@ model inference (Phase 5), this does not need to go through Celery; see the
 """
 import tempfile
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 import nibabel as nib
@@ -30,19 +31,30 @@ class SegmentationShapeMismatchError(ValueError):
     pass
 
 
-def _decode_nifti(file_bytes: bytes) -> tuple[np.ndarray, tuple[float, float, float]]:
-    """nibabel needs a real file path to memory-map a NIfTI file, so the
-    uploaded bytes are written to a throwaway temp file first."""
+@contextmanager
+def temp_nifti_path(file_bytes: bytes):
+    """nibabel (and, downstream, torch model inference — see
+    app.services.auto_segmentation_service) needs a real file path to
+    memory-map/read a NIfTI file, so the raw bytes (freshly uploaded, or
+    pulled back out of object storage for a series that's already stored)
+    are written to a throwaway temp file first. Shared by `_decode_nifti`
+    and any other caller that needs a real path rather than bytes, so the
+    "write to a temp file, always clean it up" pattern lives in one place."""
+    with tempfile.NamedTemporaryFile(suffix=".nii.gz", delete=False) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = Path(tmp.name)
     try:
-        with tempfile.NamedTemporaryFile(suffix=".nii.gz", delete=False) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = Path(tmp.name)
-        try:
+        yield tmp_path
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _decode_nifti(file_bytes: bytes) -> tuple[np.ndarray, tuple[float, float, float]]:
+    try:
+        with temp_nifti_path(file_bytes) as tmp_path:
             image = nib.load(tmp_path)
             data = np.asarray(image.dataobj)
             spacing = tuple(float(z) for z in image.header.get_zooms()[:3])
-        finally:
-            tmp_path.unlink(missing_ok=True)
     except Exception as exc:  # nibabel raises several distinct error types for bad files
         raise InvalidNiftiFileError(f"could not decode NIfTI file: {exc}") from exc
 
@@ -57,8 +69,16 @@ def _series_storage_key(imaging_study_id: uuid.UUID, series_id: uuid.UUID) -> st
     return f"studies/{imaging_study_id}/series/{series_id}.nii.gz"
 
 
-def _segmentation_storage_key(image_series_id: uuid.UUID, segmentation_id: uuid.UUID) -> str:
+def segmentation_storage_key(image_series_id: uuid.UUID, segmentation_id: uuid.UUID) -> str:
+    """Public (not `_`-prefixed): also used by app.services.auto_segmentation_service
+    so an auto-generated Segmentation lands under the exact same storage key
+    convention as a manually-uploaded one."""
     return f"series/{image_series_id}/segmentations/{segmentation_id}.nii.gz"
+
+
+# Backwards-compatible private alias — kept so nothing else in this module needs
+# touching below.
+_segmentation_storage_key = segmentation_storage_key
 
 
 def upload_series(
@@ -150,6 +170,16 @@ def upload_segmentation(
 
 def get_series_file_bytes(series: ImageSeries) -> bytes:
     return object_storage.get_storage().get_bytes(series.storage_key)
+
+
+@contextmanager
+def series_temp_nifti_path(series: ImageSeries):
+    """Pulls a stored series' bytes back out of object storage into a
+    throwaway temp file — used by inference code (see
+    app.services.analysis_service, app.services.auto_segmentation_service)
+    that needs a real file path (torch/nibabel loading), not bytes."""
+    with temp_nifti_path(get_series_file_bytes(series)) as path:
+        yield path
 
 
 def get_segmentation_file_bytes(segmentation: Segmentation) -> bytes:

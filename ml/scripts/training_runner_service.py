@@ -21,6 +21,7 @@ import argparse
 import json
 import subprocess
 import sys
+import tempfile
 import threading
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -33,6 +34,15 @@ DATA_ROOT = REPO_ROOT / "data"
 ACDC_TRAIN_ROOT = DATA_ROOT / "acdc-raw" / "ACDC" / "database" / "training"
 ACDC_TEST_ROOT = DATA_ROOT / "acdc-raw" / "ACDC" / "database" / "testing"
 MODELS_ROOT = DATA_ROOT / "models"
+UNET_WEIGHTS = MODELS_ROOT / "unet2d.pt"
+CNN3D_WEIGHTS = MODELS_ROOT / "cnn3d" / "cnn3d.pt"
+_INFERENCE_JOB_MODULE = "cardiac_ai_ml.dl.run_inference_job"
+# One real GPU forward pass, not a 60-epoch training run — this always runs
+# on CUDA (see cardiac_ai_ml.dl.inference._require_cuda_device; the
+# subprocess fails fast, never falls back to CPU, if .venv-dl doesn't have a
+# CUDA-enabled torch or no GPU is present), so a couple minutes is generous
+# headroom even for a cold checkpoint load onto the device.
+_INFERENCE_TIMEOUT_S = 120.0
 
 # Windows (this deployment) uses Scripts/python.exe; a posix .venv-dl (e.g. CI)
 # uses bin/python — support both rather than hardcoding one.
@@ -71,6 +81,52 @@ _JOB_SPECS = {
 
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
+
+
+def _resolve_data_path(relative_path: str) -> Path:
+    """Rejects any path that would resolve outside DATA_ROOT (e.g. `../..`
+    traversal) — the container side controls this string (see
+    app.services.dl_inference_client), and while it's a same-team internal
+    service, this endpoint has no other authentication of its own (see
+    docs/dl-training-runner.md: 127.0.0.1-only is the only real boundary),
+    so it validates its input rather than trusting it blindly."""
+    candidate = (DATA_ROOT / relative_path).resolve()
+    data_root_resolved = DATA_ROOT.resolve()
+    if candidate != data_root_resolved and data_root_resolved not in candidate.parents:
+        raise ValueError(f"path {relative_path!r} escapes the data root")
+    return candidate
+
+
+def _run_inference_subprocess(args: list[str]) -> dict:
+    """Launches ml/cardiac_ai_ml/dl/run_inference_job.py as a subprocess
+    (see that module's docstring for why it isn't just imported in-process
+    here) and blocks until it finishes — a single forward pass, not a
+    60-epoch training run, so unlike `_run_job` this doesn't need the
+    QUEUED/RUNNING/COMPLETED job-polling machinery at all."""
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+        output_path = Path(tmp.name)
+    try:
+        command = [str(PYTHON), "-u", "-m", _INFERENCE_JOB_MODULE, *args, "--output", str(output_path)]
+        try:
+            completed = subprocess.run(
+                command, cwd=str(ML_DIR), capture_output=True, text=True, timeout=_INFERENCE_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"inference subprocess timed out after {_INFERENCE_TIMEOUT_S}s") from exc
+        except OSError as exc:
+            raise RuntimeError(f"failed to launch inference process: {exc}") from exc
+
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            raise RuntimeError(
+                f"inference process exited with code {completed.returncode} and wrote no result "
+                f"— stderr: {completed.stderr[-2000:]}"
+            )
+        result = json.loads(output_path.read_text())
+        if "error" in result:
+            raise RuntimeError(result["error"])
+        return result
+    finally:
+        output_path.unlink(missing_ok=True)
 
 
 def _run_job(job_id: str, model_type: str) -> None:
@@ -117,16 +173,70 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_json_body(self) -> dict | None:
+        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            return json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self._send_json(400, {"error": "invalid JSON body"})
+            return None
+
+    def _handle_inference_classify(self, payload: dict) -> None:
+        if not CNN3D_WEIGHTS.exists():
+            self._send_json(409, {"error": f"no CNN3D checkpoint at {CNN3D_WEIGHTS} — train/promote one first"})
+            return
+        try:
+            ed_path = _resolve_data_path(payload["ed_relative_path"])
+            es_path = _resolve_data_path(payload["es_relative_path"])
+        except (KeyError, ValueError) as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        try:
+            result = _run_inference_subprocess(
+                ["classify", "--weights", str(CNN3D_WEIGHTS), "--ed-image", str(ed_path), "--es-image", str(es_path)]
+            )
+        except RuntimeError as exc:
+            self._send_json(502, {"error": str(exc)})
+            return
+        self._send_json(200, result)
+
+    def _handle_inference_segment(self, payload: dict) -> None:
+        if not UNET_WEIGHTS.exists():
+            self._send_json(409, {"error": f"no U-Net checkpoint at {UNET_WEIGHTS} — train/promote one first"})
+            return
+        try:
+            image_path = _resolve_data_path(payload["image_relative_path"])
+        except (KeyError, ValueError) as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+        try:
+            result = _run_inference_subprocess(["segment", "--weights", str(UNET_WEIGHTS), "--image", str(image_path)])
+        except RuntimeError as exc:
+            self._send_json(502, {"error": str(exc)})
+            return
+        self._send_json(200, result)
+
     def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's naming convention
-        if urlparse(self.path).path != "/jobs":
+        path = urlparse(self.path).path
+
+        if path == "/inference/classify":
+            payload = self._read_json_body()
+            if payload is not None:
+                self._handle_inference_classify(payload)
+            return
+
+        if path == "/inference/segment":
+            payload = self._read_json_body()
+            if payload is not None:
+                self._handle_inference_segment(payload)
+            return
+
+        if path != "/jobs":
             self._send_json(404, {"error": "not found"})
             return
 
-        length = int(self.headers.get("Content-Length", "0"))
-        try:
-            payload = json.loads(self.rfile.read(length) or b"{}")
-        except json.JSONDecodeError:
-            self._send_json(400, {"error": "invalid JSON body"})
+        payload = self._read_json_body()
+        if payload is None:
             return
 
         model_type = payload.get("model_type")

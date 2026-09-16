@@ -44,3 +44,37 @@ never left stuck in `RUNNING` (see `execute_dl_training`'s ~90 minute poll timeo
   `{"status": "QUEUED"|"RUNNING"|"COMPLETED"|"FAILED", "log_tail": "<last ~4000 chars of stdout+stderr>", "result_path": "<path relative to data/, or null until COMPLETED>", "error": "<str or null>"}`.
 
 In-memory only — one process, no persistence. A restart loses any in-flight job.
+
+### Real-time inference (EPIC-2)
+
+Two more endpoints reuse this same host-side GPU bridge for a single forward pass instead of a
+whole training run — `app.services.analysis_service` (real `AIAnalysis` classification, CNN3D) and
+`app.services.auto_segmentation_service` (real `Segmentation` generation, U-Net) both call these via
+`app.services.dl_inference_client`, exactly the same way `execute_dl_training` calls `POST /jobs`.
+Unlike training, both block and return the result directly (one real GPU forward pass takes
+milliseconds to a few seconds — no need for the QUEUED/RUNNING/polling machinery `/jobs` needs for a
+60-epoch run) by launching `python -m cardiac_ai_ml.dl.run_inference_job` as a short subprocess.
+Both endpoints require real CUDA in that subprocess — see
+`cardiac_ai_ml.dl.inference._require_cuda_device` — and fail with a clear `502` (surfaced by
+`_run_inference_subprocess` reading the job's `{"error": ...}` result) rather than ever silently
+falling back to CPU.
+
+Both endpoints take a path *relative to* this process's own `DATA_ROOT` (the host's view of the
+same `./data` directory the containers bind-mount at `/data`) — the calling container stages the
+relevant series' raw bytes onto that shared mount under `data/tmp/inference/` first (since this
+process, running directly on the host rather than in a container, cannot reach MinIO/object storage
+directly), and removes the staged file again once the call returns.
+
+- `POST /inference/classify` — body `{"ed_relative_path": "tmp/inference/<uuid>.nii.gz", "es_relative_path": "tmp/inference/<uuid>.nii.gz"}`.
+  Runs the real `data/models/cnn3d/cnn3d.pt` checkpoint. Returns
+  `{"predicted_class": "<DiagnosisClass value>", "probabilities": {"<class>": <float>, ...}}` (200),
+  `409` if no checkpoint exists yet, `400` for a bad/missing path, `502` if the inference subprocess
+  itself fails.
+- `POST /inference/segment` — body `{"image_relative_path": "tmp/inference/<uuid>.nii.gz"}`. Runs
+  the real `data/models/unet2d.pt` checkpoint. Returns
+  `{"mask_base64": "<base64 int16 mask bytes>", "mask_shape": [H, W, Z], "voxel_spacing_x_mm": <float>, "voxel_spacing_y_mm": <float>, "voxel_spacing_z_mm": <float>}`
+  (200) — same status codes as `/inference/classify` for the failure cases.
+
+Same manual prerequisite as training: if this process isn't running, both calls fail with a clear
+`InferenceRunnerError` (surfaced as an HTTP 503 from the backend endpoint/a FAILED `AIAnalysis`),
+never a hang or a fabricated result.
