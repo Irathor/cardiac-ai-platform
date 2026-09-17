@@ -29,9 +29,11 @@ import {
   type ImageSeries,
   type Segmentation,
 } from "../api/imaging";
+import { alpha } from "@mui/material/styles";
+
 import { LoginCard } from "../components/LoginCard";
 import { NiftiViewer } from "../components/NiftiViewer";
-import { heroSurface } from "../theme";
+import { heroSurface, tokens } from "../theme";
 
 const ANALYSIS_STATUS_COLOR: Record<string, "default" | "info" | "success" | "error"> = {
   QUEUED: "default",
@@ -275,7 +277,23 @@ export function ImagingViewerPage() {
                   // it gets the sole hero treatment on the page; everything
                   // around it (series list, biomarker chips) stays quiet.
                   <Fade in>
-                    <Card sx={{ ...heroSurface("cyan"), overflow: "hidden" }}>
+                    {/* heroSurface("cyan")'s default border/glow is tuned for
+                        UI chrome, not for sitting flush against a grayscale
+                        MRI volume — at full strength the bioluminescent
+                        green bled visibly onto the image's edge pixels and
+                        read as a color cue competing with the (red) mask
+                        overlay. Muted locally, only at this direct contact
+                        point with the clinical image: still the one hero on
+                        the page, just without the accent fighting the scan
+                        for attention. See EPIC-13 for the verification. */}
+                    <Card
+                      sx={{
+                        ...heroSurface("cyan"),
+                        border: `1px solid ${alpha(tokens.cyan, 0.22)}`,
+                        boxShadow: `0 0 0 1px ${alpha(tokens.cyan, 0.04)}, 0 24px 64px -32px ${alpha(tokens.cyan, 0.32)}`,
+                        overflow: "hidden",
+                      }}
+                    >
                       <Box sx={{ height: 480 }}>
                         <NiftiViewer seriesBlob={seriesBlob} maskBlob={maskBlob} />
                       </Box>

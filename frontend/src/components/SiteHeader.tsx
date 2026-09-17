@@ -29,7 +29,7 @@ export function SiteHeader() {
           <Typography
             variant="h6"
             sx={{
-              fontFamily: '"Space Grotesk", "Inter", sans-serif',
+              fontFamily: '"Bricolage Grotesque", "IBM Plex Sans", sans-serif',
               color: "text.primary",
               fontWeight: 600,
             }}

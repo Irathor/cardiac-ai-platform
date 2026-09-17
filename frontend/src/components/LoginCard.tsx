@@ -22,7 +22,7 @@ export function LoginCard({ title, email, password, error, onEmailChange, onPass
             <Typography
               variant="h6"
               gutterBottom
-              sx={{ fontFamily: '"Space Grotesk", "Inter", sans-serif', fontWeight: 600 }}
+              sx={{ fontFamily: '"Bricolage Grotesque", "IBM Plex Sans", sans-serif', fontWeight: 600 }}
             >
               {title}
             </Typography>
