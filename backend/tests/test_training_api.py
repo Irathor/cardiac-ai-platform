@@ -127,27 +127,32 @@ def test_training_run_completes_and_registers_a_model_version(client, db_session
     assert evaluations.json()[0]["accuracy"] == pytest.approx(1.0)
 
 
-# --- EPIC-4: mlflow.register_model called at the exact point (inside the
-# training try, before model_repository.create) with the runs:/ URI, not
-# the absolute mlflow_model_uri. ---
+# --- EPIC-4: model version registration called at the exact point (inside
+# the training try, before model_repository.create) with the runs:/ URI, not
+# the absolute mlflow_model_uri.
+#
+# Since the EPIC-5 mlflow>=3 upgrade, registration goes through
+# training_service._register_raw_artifact_model_version (see its docstring)
+# rather than the mlflow.register_model convenience wrapper directly — these
+# tests monkeypatch that instead. ---
 
 
 def test_execute_training_registers_the_model_at_the_right_uri_before_the_row_is_created(
     client, db_session, demo_org, monkeypatch,
 ):
     token, dataset_id, version_id = _setup_locked_version_with_all_classes(client, db_session, demo_org, suffix="reg1")
-    real_register_model = training_service.mlflow.register_model
+    real_register = training_service._register_raw_artifact_model_version
     calls: list[dict] = []
 
-    def spying_register_model(model_uri, name):
-        # At the moment register_model is called, no ModelVersion row exists
+    def spying_register(*, name, run_id, artifact_path):
+        # At the moment registration is called, no ModelVersion row exists
         # yet (EPIC-4 point 1: registration happens strictly before
         # model_repository.create).
         assert model_repository.list_all(db_session) == []
-        calls.append({"model_uri": model_uri, "name": name})
-        return real_register_model(model_uri=model_uri, name=name)
+        calls.append({"model_uri": f"runs:/{run_id}/{artifact_path}", "name": name})
+        return real_register(name=name, run_id=run_id, artifact_path=artifact_path)
 
-    monkeypatch.setattr(training_service.mlflow, "register_model", spying_register_model)
+    monkeypatch.setattr(training_service, "_register_raw_artifact_model_version", spying_register)
 
     run = client.post(
         f"/api/v1/datasets/{dataset_id}/versions/{version_id}/training-runs", headers=_auth(token),
@@ -173,10 +178,10 @@ def test_execute_training_fails_the_run_without_creating_a_model_version_when_re
 ):
     token, dataset_id, version_id = _setup_locked_version_with_all_classes(client, db_session, demo_org, suffix="reg2")
 
-    def failing_register_model(model_uri, name):
+    def failing_register(*, name, run_id, artifact_path):
         raise RuntimeError("mlflow registry unreachable")
 
-    monkeypatch.setattr(training_service.mlflow, "register_model", failing_register_model)
+    monkeypatch.setattr(training_service, "_register_raw_artifact_model_version", failing_register)
 
     run = client.post(
         f"/api/v1/datasets/{dataset_id}/versions/{version_id}/training-runs", headers=_auth(token),
@@ -433,14 +438,14 @@ def test_execute_dl_training_registers_the_checkpoint_weights_in_mlflow_registry
     )
     monkeypatch.setattr(training_service.time, "sleep", lambda s: None)
 
-    real_register_model = training_service.mlflow.register_model
+    real_register = training_service._register_raw_artifact_model_version
     calls: list[dict] = []
 
-    def spying_register_model(model_uri, name):
-        calls.append({"model_uri": model_uri, "name": name})
-        return real_register_model(model_uri=model_uri, name=name)
+    def spying_register(*, name, run_id, artifact_path):
+        calls.append({"model_uri": f"runs:/{run_id}/{artifact_path}", "name": name})
+        return real_register(name=name, run_id=run_id, artifact_path=artifact_path)
 
-    monkeypatch.setattr(training_service.mlflow, "register_model", spying_register_model)
+    monkeypatch.setattr(training_service, "_register_raw_artifact_model_version", spying_register)
 
     training_service.execute_dl_training(db_session, training_run_id=run.id)
     db_session.commit()

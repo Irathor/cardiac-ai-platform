@@ -4,12 +4,18 @@ version = "0.1.0"
 description = "CardiacAI Research Platform — Clinical API (research prototype, not for clinical use)"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.118,<0.119",
+    # Bumped from 0.118.x (EPIC-5): 0.118.x itself caps starlette at <0.49,
+    # which conflicts with the starlette>=1.6.0 pin below. fastapi>=0.141
+    # dropped that upper bound on starlette entirely, so it's the version
+    # that actually unblocks the starlette CVE fix.
+    "fastapi>=0.141,<0.142",
     # Pinned explicitly (not just left to fastapi's own transitive range) to
-    # force a version past two known starlette CVEs (PYSEC-2026-161/248/249)
-    # that a plain "let fastapi pick starlette" install would otherwise leave
-    # at the vulnerable 0.46.x — see the Phase 8 security review notes in README.md.
-    "starlette>=0.47.2,<0.49.0",
+    # force a version past the starlette CVEs known as of EPIC-5's pip-audit
+    # gate (PYSEC-2026-161/248/249 and friends, GHSA-7f5h-v6xp-fcq8 et al.) —
+    # 0.47.2-0.48.x still carried several of these; 1.x is the first line
+    # confirmed clean against OSV.
+    # See the Phase 8 security review notes in README.md.
+    "starlette>=1.6.0,<2",
     "uvicorn[standard]>=0.32,<0.33",
     "pydantic>=2.9,<3",
     "email-validator>=2.2,<3",
@@ -24,7 +30,12 @@ dependencies = [
     "python-multipart>=0.0.12,<0.1",
     "boto3>=1.35,<2",
     "nibabel>=5.3,<6",
-    "mlflow>=2.17,<3",
+    # Bumped from the 2.x line to 3.16.1 to resolve the 70-CVE pip-audit
+    # finding across mlflow/starlette/pyarrow (EPIC-5). mlflow 3.x still
+    # exposes MlflowClient.transition_model_version_stage (deprecated, not
+    # removed) used by app.services.model_service — see docs/BACKLOG.md for
+    # the fast-follow to migrate to registered-model aliases.
+    "mlflow>=3.16.1,<4",
     "cardiac-ai-ml",
     # Talks to ml/scripts/training_runner_service.py (see docs/dl-training-runner.md) from
     # app.services.training_service.execute_dl_training — a real runtime dependency now, not
@@ -34,8 +45,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3,<9",
-    "pytest-asyncio>=0.24,<0.25",
+    # Bumped from 8.3 to resolve a pip-audit finding on pytest 8.4.2
+    # (EPIC-5); pytest-asyncio bumped alongside it since 1.4.0 requires
+    # pytest>=8.4.
+    "pytest>=9.1,<10",
+    "pytest-asyncio>=1.4,<2",
     "ruff>=0.7,<0.8",
 ]
 

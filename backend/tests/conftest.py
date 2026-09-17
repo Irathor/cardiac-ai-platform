@@ -272,12 +272,18 @@ def make_model_version(
 
         prototypes = {d.value: dict.fromkeys(FEATURE_NAMES, 100.0) for d in DiagnosisClass}
 
+    # Registers through the same helper training_service.py uses (not
+    # mlflow.register_model directly) — see its docstring: mlflow>=3's
+    # register_model needs an MLmodel file or a Logged Model for a runs:/
+    # URI, neither of which a plain mlflow.log_dict artifact has.
+    from app.services.training_service import _register_raw_artifact_model_version
+
     mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
     mlflow.set_experiment(name)
     with mlflow.start_run(run_name=f"test-fixture-{uuid.uuid4().hex[:8]}") as run:
         mlflow.log_dict(prototypes, "prototypes.json")
         run_id = run.info.run_id
-    registered = mlflow.register_model(model_uri=f"runs:/{run_id}/prototypes.json", name=name)
+    registered = _register_raw_artifact_model_version(name=name, run_id=run_id, artifact_path="prototypes.json")
 
     model_version = ModelVersion(
         training_run_id=training_run.id, name=name, mlflow_run_id=run_id,

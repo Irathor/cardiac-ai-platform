@@ -16,6 +16,11 @@ import httpx
 import mlflow
 from cardiac_ai_ml.classification import DiagnosisClass
 from cardiac_ai_ml.training import EmptyTrainingSetError, MissingClassError, TrainingCase, evaluate, fit_nearest_centroid
+from mlflow import MlflowClient
+from mlflow.entities.model_registry import ModelVersion as MlflowModelVersion
+from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import ALREADY_EXISTS, RESOURCE_ALREADY_EXISTS, ErrorCode
+from mlflow.store.artifact.runs_artifact_repo import RunsArtifactRepository
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -38,6 +43,36 @@ _DL_TIMEOUT_S = 90 * 60
 
 class DatasetVersionNotLockedError(ValueError):
     pass
+
+
+def _register_raw_artifact_model_version(*, name: str, run_id: str, artifact_path: str) -> MlflowModelVersion:
+    """Registers a model version pointing at a plain artifact (a JSON file
+    logged with mlflow.log_dict, or a raw weights file logged with
+    mlflow.log_artifact) rather than a proper flavor logged via
+    mlflow.<flavor>.log_model.
+
+    mlflow>=3 (EPIC-5 dependency upgrade) changed `mlflow.register_model`'s
+    handling of a `runs:/<run_id>/<artifact_path>` URI: it now requires
+    either an MLmodel file at that path, or a "Logged Model" entity — a raw
+    artifact like ours has neither, so the convenience wrapper raises
+    MlflowException("Unable to find a logged_model..."). The documented
+    workaround (see MlflowClient.create_model_version's own docstring
+    example in mlflow's source) is to resolve the runs:/ URI to its
+    underlying artifact-store URI ourselves and call the lower-level
+    MlflowClient.create_model_version directly, which has no such
+    restriction — that's what this replicates, including the
+    registered-model-already-exists handling mlflow.register_model does
+    internally.
+    """
+    client = MlflowClient()
+    try:
+        client.create_registered_model(name)
+    except MlflowException as exc:
+        if exc.error_code not in (ErrorCode.Name(RESOURCE_ALREADY_EXISTS), ErrorCode.Name(ALREADY_EXISTS)):
+            raise
+    runs_uri = f"runs:/{run_id}/{artifact_path}"
+    source = RunsArtifactRepository.get_underlying_uri(runs_uri)
+    return client.create_model_version(name=name, source=source, run_id=run_id)
 
 
 class TrainingRunnerError(RuntimeError):
@@ -137,8 +172,8 @@ def execute_training(db: Session, *, training_run_id: uuid.UUID) -> None:
         # Registry counterpart. runs:/<run_id>/<artifact_path>, not
         # mlflow_model_uri (that's the absolute artifact-store path, not a
         # valid register_model URI).
-        registered = mlflow.register_model(
-            model_uri=f"runs:/{mlflow_run_id}/prototypes.json", name=MODEL_NAME,
+        registered = _register_raw_artifact_model_version(
+            name=MODEL_NAME, run_id=mlflow_run_id, artifact_path="prototypes.json",
         )
 
         model_version = model_repository.create(
@@ -292,8 +327,8 @@ def execute_dl_training(db: Session, *, training_run_id: uuid.UUID) -> None:
         # real deployable artifact — falling back to metrics.json only if
         # the runner didn't produce a checkpoint file.
         registered_artifact_path = weights_path.name if weights_logged else "metrics.json"
-        registered = mlflow.register_model(
-            model_uri=f"runs:/{mlflow_run_id}/{registered_artifact_path}", name=model_name,
+        registered = _register_raw_artifact_model_version(
+            name=model_name, run_id=mlflow_run_id, artifact_path=registered_artifact_path,
         )
 
         model_version = model_repository.create(

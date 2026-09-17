@@ -24,6 +24,16 @@ Este archivo distingue tres cosas que no son lo mismo (ver `~/.claude/CLAUDE.md`
   negocio, así que la corrección por defecto sería "MLflow sigue a la tabla propia", pero no
   se implementó porque el propio criterio de aceptación de EPIC-4 solo pedía detección
   ("aunque sea manual en esta fase").
+- **Migrar `model_service.py`/`training_service.py` de los "stages" deprecados de MLflow
+  (`transition_model_version_stage`, `current_stage`) a `set_registered_model_alias`/
+  `mlflow.entities.model_registry.ModelVersion.aliases`** — al actualizar mlflow a 3.16.1
+  (EPIC-5, resolución de 70 CVEs en `pip-audit`) se confirmó empíricamente (venv real, no de
+  memoria) que la API de stages sigue funcionando en mlflow 3.x, solo deprecada desde 2.9 —
+  ver el `FutureWarning` real capturado en los tests y en la verificación end-to-end contra
+  un servidor MLflow containerizado real. No se migra ahora porque sería expandir el alcance
+  de EPIC-5 sin necesidad (el contrato técnico de _STAGE_BY_STATUS de ADR-2/EPIC-4 sigue
+  siendo válido tal cual); se revisita si una futura versión mayor de mlflow elimina la API
+  de stages de verdad, no solo la marca deprecada.
 
 ## Niebla — Epics pendientes de decisión previa
 

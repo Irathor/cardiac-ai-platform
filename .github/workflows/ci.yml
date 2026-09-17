@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
 
 jobs:
@@ -22,6 +22,17 @@ jobs:
       - name: Run ml tests
         working-directory: ml
         run: pytest
+      - name: Audit ml dependencies (pip-audit)
+        working-directory: ml
+        run: |
+          pip install pip-audit
+          # pip-audit has no native --severity flag (unlike `npm audit
+          # --audit-level`, OSV/PyPA advisory data doesn't consistently carry
+          # a CVSS score to filter on) — it fails on any known vulnerability
+          # found in the currently installed environment. See EPIC-5 summary
+          # for the real findings at the time this gate was introduced and
+          # which ones the team accepted vs. needs to triage.
+          pip-audit --local
 
   backend:
     runs-on: ubuntu-latest
@@ -41,6 +52,25 @@ jobs:
       - name: Run backend tests
         working-directory: backend
         run: pytest
+      - name: Audit backend dependencies (pip-audit)
+        run: |
+          pip install pip-audit
+          # Same caveat as the ml job's audit step above: no severity
+          # filter available, this fails on any known vulnerability.
+          #
+          # PYSEC-2026-1325 (GHSA-wj6h-64fc-37mp, "Minerva" timing attack on
+          # P-256) is ignored deliberately, not silenced blindly: it affects
+          # `ecdsa`, a transitive dependency of python-jose[cryptography]
+          # (still required even with the cryptography extra — see
+          # python-jose's setup.py). ecdsa 0.19.2 is the latest release on
+          # PyPI as of this gate (verified 2026-09) and there is no patched
+          # version — the python-ecdsa maintainers explicitly document that
+          # side-channel/timing attacks are outside python-ecdsa's threat
+          # model for the pure-Python implementation (see their README).
+          # Revisit if a fixed release ever ships, or consider dropping
+          # python-jose's plain ecdsa backend in favor of one that shells
+          # out to `cryptography` exclusively (fast-follow, see BACKLOG.md).
+          pip-audit --local --ignore-vuln PYSEC-2026-1325
 
   frontend:
     runs-on: ubuntu-latest
@@ -54,6 +84,9 @@ jobs:
       - name: Install frontend
         working-directory: frontend
         run: npm install
+      - name: Audit frontend dependencies (npm audit)
+        working-directory: frontend
+        run: npm audit --audit-level=high
       - name: Lint
         working-directory: frontend
         run: npm run lint
@@ -104,3 +137,44 @@ jobs:
       - name: Dump container logs on failure
         if: failure()
         run: docker compose logs
+
+  # Builds the backend/frontend images on every push and PR (catches Dockerfile
+  # breakage early) but only publishes (push: true) to GHCR on push to master —
+  # never from a feature-branch PR. Depends on the test jobs so a broken build
+  # or failing test never gets an image published.
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: [ml, backend, frontend]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: backend
+            context: .
+            dockerfile: backend/Dockerfile
+          - image: frontend
+            context: ./frontend
+            dockerfile: frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Compute lowercase image repository (GHCR requires lowercase)
+        run: echo "REPO_LC=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push ${{ matrix.image }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+          tags: |
+            ghcr.io/${{ env.REPO_LC }}/${{ matrix.image }}:${{ github.sha }}
+            ghcr.io/${{ env.REPO_LC }}/${{ matrix.image }}:latest

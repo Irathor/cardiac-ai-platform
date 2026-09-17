@@ -1,6 +1,9 @@
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir mlflow==2.17.2 psycopg2-binary==2.9.10 boto3==1.35.54
+# mlflow pinned to match the client version pinned in backend/pyproject.toml
+# and ml/pyproject.toml (EPIC-5 dependency upgrade) — a mlflow 3.x client
+# talking to a much older 2.x tracking server risks API/DB-schema drift.
+RUN pip install --no-cache-dir mlflow==3.16.1 psycopg2-binary==2.9.10 boto3==1.35.54
 
 COPY ensure_bucket.py /ensure_bucket.py
 COPY start.sh /start.sh
