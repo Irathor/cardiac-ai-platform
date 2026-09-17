@@ -27,6 +27,7 @@ from app.core.enums import ModelVersionStatus, TrainingModelType, TrainingRunSta
 from app.core.model_registry import MODEL_NAME_CNN3D, MODEL_NAME_UNET
 from app.db.session import get_session_factory
 from app.repositories import model_repository, training_repository, user_repository
+from app.services.training_service import _register_raw_artifact_model_version
 
 
 def _total_seconds(history: list[dict]) -> float:
@@ -78,10 +79,13 @@ def _record_run_and_version(
 
     # Same registration point/rule as app.services.training_service.execute_dl_training
     # (ADR-2, EPIC-4): register the real checkpoint artifact when it was
-    # logged, before the ModelVersion row is created.
+    # logged, before the ModelVersion row is created. Uses the same
+    # low-level helper training_service.py switched to for EPIC-5's mlflow
+    # 3.x upgrade — a plain mlflow.register_model(model_uri="runs:/...")
+    # no longer resolves a raw (non-MLmodel) artifact in mlflow>=3.
     registered_artifact_path = weights_path.name if weights_logged else "metrics.json"
-    registered = mlflow.register_model(
-        model_uri=f"runs:/{mlflow_run_id}/{registered_artifact_path}", name=model_name,
+    registered = _register_raw_artifact_model_version(
+        name=model_name, run_id=mlflow_run_id, artifact_path=registered_artifact_path,
     )
 
     model_version = model_repository.create(
