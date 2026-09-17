@@ -1,0 +1,152 @@
+#!/bin/bash
+# infrastructure/terraform/oracle/cloud-init.tftpl
+#
+# Rendered by Terraform's templatefile() (main.tf) and passed as instance
+# user_data. OCI's Ubuntu cloud images run user_data as a plain shell script
+# on first boot when it starts with a shebang (no #cloud-config YAML needed)
+# — used here instead of #cloud-config because this needs real control flow
+# (a wait loop for the block volume device, a metadata-service HTTP call)
+# that's awkward to express declaratively.
+#
+# NOTE ON TERRAFORM TEMPLATE SYNTAX: this file is processed by
+# templatefile(), which uses the same "$${...}" interpolation syntax as
+# other Terraform templates. Every "$${...}" below is a literal shell
+# variable expansion (escaped so Terraform leaves it alone) EXCEPT the
+# handful of bare interpolations (no leading "$$") that ARE real Terraform
+# template variables (repo_url, postgres_password, etc., listed in main.tf's
+# templatefile() call) — those get substituted with real values from
+# terraform.tfvars at `terraform apply` time.
+
+set -euo pipefail
+exec > >(tee /var/log/cardiac-ai-cloud-init.log) 2>&1
+
+echo "[cloud-init] starting cardiac-ai-platform provisioning"
+
+# --- 1. Mount the dedicated block volume at /var/lib/docker ------------
+#
+# Attached as paravirtualized in main.tf (oci_core_volume_attachment),
+# device alias /dev/oracleoci/oraclevdb. The attachment is a separate OCI
+# API call made after the instance exists, so it can race this first boot —
+# poll for the device instead of assuming it's already there.
+DEVICE="/dev/oracleoci/oraclevdb"
+echo "[cloud-init] waiting for block volume device $${DEVICE}"
+for i in $(seq 1 60); do
+  if [ -b "$${DEVICE}" ]; then
+    echo "[cloud-init] device $${DEVICE} present"
+    break
+  fi
+  sleep 5
+done
+if [ ! -b "$${DEVICE}" ]; then
+  echo "[cloud-init] ERROR: $${DEVICE} never appeared, aborting" >&2
+  exit 1
+fi
+
+# Format only if it has no filesystem yet (idempotent across reboots/re-runs).
+if ! blkid "$${DEVICE}" >/dev/null 2>&1; then
+  echo "[cloud-init] formatting $${DEVICE} as ext4"
+  mkfs.ext4 -F "$${DEVICE}"
+fi
+
+systemctl stop docker >/dev/null 2>&1 || true
+mkdir -p /var/lib/docker
+if ! mountpoint -q /var/lib/docker; then
+  mount "$${DEVICE}" /var/lib/docker
+fi
+if ! grep -q "$${DEVICE}" /etc/fstab; then
+  echo "$${DEVICE}  /var/lib/docker  ext4  defaults,nofail  0  2" >> /etc/fstab
+fi
+
+# --- 2. Install Docker Engine + Compose plugin (official apt repo) -----
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl git jq
+
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+
+ARCH="$(dpkg --print-architecture)"
+CODENAME="$(. /etc/os-release && echo "$${VERSION_CODENAME}")"
+echo "deb [arch=$${ARCH} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $${CODENAME} stable" \
+  > /etc/apt/sources.list.d/docker.list
+
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+systemctl enable docker
+systemctl start docker
+
+# --- 3. Clone (or update) the application repo -------------------------
+
+APP_DIR=/opt/cardiac-ai-platform
+if [ ! -d "$${APP_DIR}/.git" ]; then
+  git clone --branch "${repo_ref}" --depth 1 "${repo_url}" "$${APP_DIR}"
+else
+  git -C "$${APP_DIR}" fetch --depth 1 origin "${repo_ref}"
+  git -C "$${APP_DIR}" checkout "${repo_ref}"
+  git -C "$${APP_DIR}" reset --hard "origin/${repo_ref}"
+fi
+
+# --- 4. Discover this instance's own public IP via the OCI IMDS --------
+#
+# Known at boot (assigned as part of instance launch, before cloud-init
+# runs) even though Terraform doesn't learn it until after oci_core_instance
+# finishes creating — see outputs.tf for why the Terraform-side output is
+# informational only, not what actually configures Caddy.
+PUBLIC_IP="$(curl -fsSL -H 'Authorization: Bearer Oracle' \
+  http://169.254.169.254/opc/v2/vnics/ | jq -r '.[0].publicIp')"
+CADDY_HOSTNAME="$(echo "$${PUBLIC_IP}" | tr '.' '-').sslip.io"
+echo "[cloud-init] resolved public IP $${PUBLIC_IP} -> $${CADDY_HOSTNAME}"
+
+# --- 5. Write .env (secrets come from Terraform sensitive variables) ---
+#
+# The heredoc delimiter below is QUOTED ("ENV_EOF", not ENV_EOF) so bash
+# never performs parameter/command substitution inside the body — a secret
+# value containing "$(...)" or a backtick would otherwise be executed as a
+# shell command, as root, during first boot (found by security-review at
+# this Epic's close checkpoint). CADDY_HOSTNAME is the one value that must
+# still be resolved at runtime (computed above, not a Terraform variable),
+# so it's written as a literal placeholder here and substituted afterward
+# with `sed`, never expanded by the heredoc itself.
+
+cat > "$${APP_DIR}/.env" <<"ENV_EOF"
+ENVIRONMENT=${environment}
+
+POSTGRES_DB=${postgres_db}
+POSTGRES_USER=${postgres_user}
+POSTGRES_PASSWORD=${postgres_password}
+
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+MINIO_ACCESS_KEY=${minio_access_key}
+MINIO_SECRET_KEY=${minio_secret_key}
+MINIO_BUCKET_IMAGES=cardiac-images
+MINIO_SECURE=false
+
+JWT_SECRET_KEY=${jwt_secret_key}
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+CORS_ALLOWED_ORIGINS=${cors_allowed_origins}
+
+GRAFANA_ADMIN_USER=${grafana_admin_user}
+GRAFANA_ADMIN_PASSWORD=${grafana_admin_password}
+
+VITE_API_BASE_URL=https://__CADDY_HOSTNAME__/api/v1
+
+CADDY_HOSTNAME=__CADDY_HOSTNAME__
+ENV_EOF
+
+sed -i "s/__CADDY_HOSTNAME__/$${CADDY_HOSTNAME}/g" "$${APP_DIR}/.env"
+chmod 600 "$${APP_DIR}/.env"
+
+# --- 6. Bring the stack up ----------------------------------------------
+
+cd "$${APP_DIR}"
+docker compose up -d --build
+
+echo "[cloud-init] cardiac-ai-platform stack started, hostname https://$${CADDY_HOSTNAME}"

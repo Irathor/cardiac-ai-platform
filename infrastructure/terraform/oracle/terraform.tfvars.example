@@ -1,0 +1,39 @@
+# Copy to terraform.tfvars and fill in real values.
+# terraform.tfvars (the real file) is gitignored — never commit it.
+# See README.md for exactly how to obtain the OCI credential values below.
+
+# --- OCI account / API credentials ---
+tenancy_ocid      = "ocid1.tenancy.oc1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+user_ocid         = "ocid1.user.oc1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+fingerprint       = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+private_key_path  = "~/.oci/oci_api_key.pem"
+compartment_ocid  = "ocid1.tenancy.oc1..xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+region            = "eu-madrid-1"
+
+# --- Network access ---
+# Your own machine's public IP in CIDR form, e.g. "203.0.113.10/32".
+# Find it with: curl -s ifconfig.me
+ssh_allowed_cidr = "203.0.113.10/32"
+ssh_public_key   = "ssh-ed25519 AAAA... your-key-comment"
+
+# --- Application deployment ---
+repo_url             = "https://github.com/<your-github-user>/cardiac-ai-platform.git"
+repo_ref              = "master"
+environment            = "production"
+# Fill in once you know the instance's public IP from `terraform apply` output
+# (sslip_hostname), or leave pointing at the eventual expected hostname.
+cors_allowed_origins = "https://<ip-with-dashes>.sslip.io"
+
+# --- Secrets ---
+postgres_password       = "change-me-strong-password"
+minio_access_key        = "cardiac_ai_admin"
+minio_secret_key        = "change-me-strong-secret"
+# Generate with: python -c "import secrets; print(secrets.token_urlsafe(64))"
+jwt_secret_key           = "change-me-generate-a-real-secret"
+grafana_admin_password   = "change-me-strong-password"
+
+# --- Optional overrides (sensible defaults in variables.tf) ---
+# instance_ocpus       = 4
+# instance_memory_gbs  = 24
+# boot_volume_size_gb  = 50
+# data_volume_size_gb  = 100

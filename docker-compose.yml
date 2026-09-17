@@ -158,6 +158,34 @@ services:
     depends_on:
       - backend
 
+  # EPIC-8/ADR-6: the single public entry point to the stack. Binds
+  # 0.0.0.0:80/443 (NOT 127.0.0.1 like every other service in this file) —
+  # this is a deliberate exception to the project's usual "bind to
+  # loopback, never expose directly" convention, because Caddy IS the
+  # thing meant to be reachable from the public Internet: it terminates
+  # TLS and reverse-proxies internally to frontend/backend over the
+  # Docker network, so they never need their own public port.
+  caddy:
+    image: caddy:2.10-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Resolved by Terraform's cloud-init on the real deployment (see
+      # infrastructure/terraform/oracle/cloud-init.tftpl) from the
+      # instance's own public IP as "<ip-with-dashes>.sslip.io". Locally,
+      # set CADDY_HOSTNAME=localhost in .env if you want to exercise this
+      # service without a public IP (Caddy issues a local, not
+      # publicly-trusted, TLS cert in that case).
+      CADDY_HOSTNAME: ${CADDY_HOSTNAME:?CADDY_HOSTNAME is required}
+    volumes:
+      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
   prometheus:
     image: prom/prometheus:v3.13.3
     volumes:
@@ -190,6 +218,8 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  caddy_data:
+  caddy_config:
   prometheus_data:
   grafana_data:
   # EPIC-6: shared between `backend` and `worker` for

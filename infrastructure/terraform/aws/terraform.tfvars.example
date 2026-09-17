@@ -1,0 +1,27 @@
+# SCAFFOLD ONLY — see README.md and ADR-6. This example exists so the shape
+# of a future real terraform.tfvars is documented, not because anyone is
+# expected to run `terraform apply` with it. If/when the user decides to
+# activate this scaffold: copy to terraform.tfvars (gitignored, never
+# commit it), fill in real values, and only THEN run apply.
+
+aws_region        = "eu-west-1"
+availability_zone = "eu-west-1a"
+
+# NOT free-tier eligible sized for this stack's actual memory footprint —
+# see the instance_type description in variables.tf. Confirm real sizing
+# before paying for it.
+instance_type = "t3.medium"
+
+ssh_allowed_cidr = "203.0.113.10/32" # your public IP, curl -s ifconfig.me
+ssh_public_key   = "ssh-ed25519 AAAA... your-key-comment"
+
+repo_url             = "https://github.com/<your-github-user>/cardiac-ai-platform.git"
+repo_ref              = "master"
+environment            = "production"
+cors_allowed_origins = "https://<ip-with-dashes>.sslip.io"
+
+postgres_password       = "change-me-strong-password"
+minio_access_key        = "cardiac_ai_admin"
+minio_secret_key        = "change-me-strong-secret"
+jwt_secret_key           = "change-me-generate-a-real-secret"
+grafana_admin_password   = "change-me-strong-password"

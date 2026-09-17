@@ -1,0 +1,27 @@
+# infrastructure/caddy/Caddyfile
+#
+# Single public entry point for the stack (EPIC-8/ADR-6): HTTPS automatic
+# via Let's Encrypt, HTTP redirected to HTTPS by default (Caddy's built-in
+# behavior, no explicit redirect block needed). Reaches `frontend`/`backend`
+# over the internal Docker network — their own host port bindings stay on
+# 127.0.0.1 (docker-compose.yml) purely for local debugging, Caddy never
+# goes through those published ports.
+#
+# {$CADDY_HOSTNAME} is a placeholder resolved from the environment at
+# container start — it's not known until the Oracle instance exists and has
+# a public IP (see infrastructure/terraform/oracle/cloud-init.tftpl, which
+# derives it from the instance's own metadata as "<ip-with-dashes>.sslip.io"
+# and writes it into .env as CADDY_HOSTNAME before `docker compose up`).
+{$CADDY_HOSTNAME} {
+	encode gzip
+
+	# Routed to backend first (more specific), everything else falls
+	# through to frontend.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:4173
+	}
+}

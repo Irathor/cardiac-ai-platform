@@ -1,0 +1,112 @@
+#!/bin/bash
+# infrastructure/terraform/aws/cloud-init.tftpl
+#
+# SCAFFOLD ONLY (see README.md, ADR-6) — never executed against a real AWS
+# account as part of this work, no terraform apply has run this script on a
+# real instance. Written with the same care as the Oracle module's
+# equivalent, but unverified end-to-end for the same reason: no `terraform`
+# binary/AWS credentials available in this sandbox.
+#
+# Simpler than the Oracle module's cloud-init: no dedicated block volume to
+# wait for/mount (the root EBS volume is sized via root_volume_size_gb and
+# used directly), and AWS AMIs are amd64 so no ARM-specific package
+# considerations apply.
+#
+# TERRAFORM TEMPLATE SYNTAX NOTE: same as oracle/cloud-init.tftpl — "$${...}"
+# below is an escaped literal shell expansion, a bare interpolation (no
+# leading "$$") is a real templatefile() variable substituted at
+# `terraform apply` time.
+
+set -euo pipefail
+exec > >(tee /var/log/cardiac-ai-cloud-init.log) 2>&1
+
+echo "[cloud-init] starting cardiac-ai-platform provisioning (AWS scaffold)"
+
+# --- 1. Install Docker Engine + Compose plugin (official apt repo) -----
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl git jq
+
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+
+ARCH="$(dpkg --print-architecture)"
+CODENAME="$(. /etc/os-release && echo "$${VERSION_CODENAME}")"
+echo "deb [arch=$${ARCH} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $${CODENAME} stable" \
+  > /etc/apt/sources.list.d/docker.list
+
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+systemctl enable docker
+systemctl start docker
+
+# --- 2. Clone (or update) the application repo -------------------------
+
+APP_DIR=/opt/cardiac-ai-platform
+if [ ! -d "$${APP_DIR}/.git" ]; then
+  git clone --branch "${repo_ref}" --depth 1 "${repo_url}" "$${APP_DIR}"
+else
+  git -C "$${APP_DIR}" fetch --depth 1 origin "${repo_ref}"
+  git -C "$${APP_DIR}" checkout "${repo_ref}"
+  git -C "$${APP_DIR}" reset --hard "origin/${repo_ref}"
+fi
+
+# --- 3. Discover this instance's own public IP via the EC2 IMDSv2 ------
+
+TOKEN="$(curl -fsSL -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 60")"
+PUBLIC_IP="$(curl -fsSL -H "X-aws-ec2-metadata-token: $${TOKEN}" \
+  http://169.254.169.254/latest/meta-data/public-ipv4)"
+CADDY_HOSTNAME="$(echo "$${PUBLIC_IP}" | tr '.' '-').sslip.io"
+echo "[cloud-init] resolved public IP $${PUBLIC_IP} -> $${CADDY_HOSTNAME}"
+
+# --- 4. Write .env (secrets come from Terraform sensitive variables) ---
+#
+# Quoted heredoc delimiter ("ENV_EOF") — see the Oracle module's
+# cloud-init.tftpl for why: an unquoted heredoc lets a secret value
+# containing "$(...)" execute as a shell command, as root, on first boot.
+# CADDY_HOSTNAME is substituted afterward with `sed`, never expanded by
+# the heredoc itself.
+
+cat > "$${APP_DIR}/.env" <<"ENV_EOF"
+ENVIRONMENT=${environment}
+
+POSTGRES_DB=${postgres_db}
+POSTGRES_USER=${postgres_user}
+POSTGRES_PASSWORD=${postgres_password}
+
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+MINIO_ACCESS_KEY=${minio_access_key}
+MINIO_SECRET_KEY=${minio_secret_key}
+MINIO_BUCKET_IMAGES=cardiac-images
+MINIO_SECURE=false
+
+JWT_SECRET_KEY=${jwt_secret_key}
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+CORS_ALLOWED_ORIGINS=${cors_allowed_origins}
+
+GRAFANA_ADMIN_USER=${grafana_admin_user}
+GRAFANA_ADMIN_PASSWORD=${grafana_admin_password}
+
+VITE_API_BASE_URL=https://__CADDY_HOSTNAME__/api/v1
+
+CADDY_HOSTNAME=__CADDY_HOSTNAME__
+ENV_EOF
+
+sed -i "s/__CADDY_HOSTNAME__/$${CADDY_HOSTNAME}/g" "$${APP_DIR}/.env"
+chmod 600 "$${APP_DIR}/.env"
+
+# --- 5. Bring the stack up ----------------------------------------------
+
+cd "$${APP_DIR}"
+docker compose up -d --build
+
+echo "[cloud-init] cardiac-ai-platform stack started, hostname https://$${CADDY_HOSTNAME}"

@@ -7,6 +7,17 @@ Este archivo distingue tres cosas que no son lo mismo (ver `~/.claude/CLAUDE.md`
 
 ## Fast-follows
 
+- **Migrar secretos de despliegue de Oracle Cloud de `user_data`/cloud-init a OCI Vault** —
+  EPIC-8 pasa `postgres_password`/`minio_secret_key`/`jwt_secret_key`/`grafana_admin_password`
+  a la instancia vía `user_data` de Terraform (variables `sensitive`, nunca comiteadas), que
+  cloud-init escribe en `.env` con `chmod 600`. `security-review` en el cierre de EPIC-8/9
+  evaluó esto como riesgo real pero no bloqueante en el contexto actual (instancia personal
+  de un solo operador, no multi-tenant, proyecto ya documentado como fuera de alcance clínico
+  real) — el `user_data` queda igualmente legible sin autenticación adicional desde el propio
+  IMDS de la instancia y vía la consola/API de OCI para quien tenga permisos IAM sobre ella.
+  Migrar a OCI Vault (cloud-init lo consulta vía instance principal en vez de recibir el
+  secreto ya embebido) sería más correcto si el contexto de confianza cambia (más operadores,
+  compartment compartido, identidad de CI con acceso a metadata de instancias).
 - **Renderizar el mapa de Grad-CAM en la pantalla de informe del frontend** — EPIC-3 ya
   expone el dato real y completo vía `GET /analyses/{analysis_id}/gradcam` (array `.npy`,
   mismo RBAC que el resto del análisis); falta la parte visual (overlay/heatmap sobre la
@@ -33,14 +44,11 @@ Este archivo distingue tres cosas que no son lo mismo (ver `~/.claude/CLAUDE.md`
 
 ## Niebla — Epics pendientes de decisión previa
 
-Estas Epics ya están redactadas como ficheros (roadmap completo, propuesto por Shepard),
-pero no pueden empezar a implementarse hasta que el usuario tome una decisión concreta que
-todavía no se ha pedido. No se fuerza su implementación por rellenar el hueco.
-
-- [EPIC-8: Deployment cloud](epics/EPIC-8-deployment-cloud.md) — requiere decidir el
-  proveedor cloud.
-- [EPIC-9: Infrastructure as Code con Terraform](epics/EPIC-9-infrastructure-as-code-terraform.md)
-  — depende de la decisión de proveedor cloud de EPIC-8.
+[EPIC-8: Deployment cloud](epics/EPIC-8-deployment-cloud.md) y
+[EPIC-9: Infrastructure as Code con Terraform](epics/EPIC-9-infrastructure-as-code-terraform.md)
+ya no están aquí: la decisión de proveedor (Oracle Cloud real + AWS scaffold, ver
+[ADR-6](adr/ADR-6-oracle-cloud-real-aws-scaffold.md)) y las decisiones de Caddy/hostname
+`sslip.io` están tomadas y fijadas en ambas Epics — listas para implementar.
 
 El reentrenamiento automático disparado por drift (mencionado como "Fuera de alcance" en
 [EPIC-7: Detección de drift sobre biomarcadores/predicciones](epics/EPIC-7-deteccion-drift.md),

@@ -20,3 +20,13 @@ Thumbs.db
 
 data/acdc-raw/
 data/models/
+
+# Terraform (EPIC-9): local state and real credentials, never versioned.
+# terraform.tfvars.example files ARE versioned (no real values) — the glob
+# below only matches the un-suffixed real file.
+infrastructure/terraform/**/.terraform/
+infrastructure/terraform/**/terraform.tfstate
+infrastructure/terraform/**/terraform.tfstate.backup
+infrastructure/terraform/**/*.tfvars
+!infrastructure/terraform/**/*.tfvars.example
+infrastructure/terraform/**/crash.log
