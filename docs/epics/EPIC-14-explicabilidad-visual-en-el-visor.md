@@ -67,6 +67,25 @@ Frontend únicamente: `frontend/src/pages/ImagingViewerPage.tsx`, componentes nu
   no añade endpoints backend nuevos, solo consume datos ya expuestos y revisados en EPIC-3/
   EPIC-12.
 
+### Ajuste post-cierre (feedback directo del usuario sobre las capturas)
+El usuario, viendo capturas reales del panel, señaló dos problemas legítimos: (1) el heatmap
+no tenía leyenda de colores, se leía como "una pelota difuminada sobre fondo verde" sin
+contexto; (2) pidió explícitamente no usar datos sintéticos para verificar, sino procesar
+datos reales. Ambos resueltos en el mismo cierre, sin reabrir la Epic como una nueva:
+- Añadida `AttributionLegend` (barra baja→alta con etiquetas) bajo el slider.
+- Añadido un segundo colormap "Standard" (jet, el mismo que ya usa
+  `ml/scripts/run_explainability_showcase.py`) además del original "Website colors"
+  (rampa cian on-brand), con un `ToggleButtonGroup` para alternar entre ambos —
+  petición explícita del usuario.
+- Verificación real, no sintética: se ejecutó `ml/cardiac_ai_ml/dl/run_inference_job.py`
+  de verdad, con GPU real (`.venv-dl`, `torch.cuda.is_available()==True`), contra el
+  checkpoint real de CNN3D y el paciente ACDC `patient101` real — el mismo caso ya usado en
+  el showcase de EPIC-1. La predicción coincidió (`DILATED_CARDIOMYOPATHY`) y el array de
+  atribución real (128×128×12, sin error) se guardó como `.npy` genuino (mismo mecanismo
+  `np.save()` que usa `analysis_service.py` en producción) y se usó para capturar el panel
+  en ambos modos — confirmado visualmente que ambas vistas muestran la misma estructura
+  irregular real (no un blob sintético perfecto), solo con paletas distintas.
+
 ## Estado
 Completada
 

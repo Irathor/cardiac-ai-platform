@@ -1,4 +1,16 @@
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Slider, Stack, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CircularProgress,
+  Slider,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 
 import { fetchGradcamAttribution } from "../api/analysis";
@@ -40,10 +52,68 @@ const COLOR_LOW = hexToRgb(tokens.bgVoid);
 const COLOR_MID = hexToRgb(tokens.cyan);
 const COLOR_HIGH = hexToRgb("#f4fff9");
 
-export function attributionColor(value: number): [number, number, number] {
-  const v = Math.min(1, Math.max(0, value));
+export function siteAttributionColor(value: number): [number, number, number] {
+  const raw = Math.min(1, Math.max(0, value));
+  // Gamma-boost midtones (v^0.6) before mapping to color: a raw linear ramp
+  // made a real (smooth, low-magnitude) attribution map read as a flat,
+  // contextless blob. Boosting contrast in the low-to-mid range without
+  // changing the palette gives the hot core real visual separation from
+  // its halo, while staying on-brand (still the same three theme colors,
+  // not a rainbow) — this is the "Website colors" mode.
+  const v = raw ** 0.6;
   const [a, b, t] = v < 0.5 ? [COLOR_LOW, COLOR_MID, v / 0.5] : [COLOR_MID, COLOR_HIGH, (v - 0.5) / 0.5];
   return [Math.round(lerp(a[0], b[0], t)), Math.round(lerp(a[1], b[1], t)), Math.round(lerp(a[2], b[2], t))];
+}
+
+/** Standard "jet" colormap (blue -> cyan -> green -> yellow -> red) —
+ * the same colormap `ml/scripts/run_explainability_showcase.py` already
+ * uses (matplotlib `cmap="jet"`) for the offline Seg-Grad-CAM/Grad-CAM
+ * renders, so switching to this mode shows the same visual language as
+ * those reference images. Standard piecewise-linear jet approximation. */
+function jetAttributionColor(value: number): [number, number, number] {
+  const v = Math.min(1, Math.max(0, value));
+  const r = Math.min(Math.max(Math.min(4 * v - 1.5, -4 * v + 4.5), 0), 1);
+  const g = Math.min(Math.max(Math.min(4 * v - 0.5, -4 * v + 3.5), 0), 1);
+  const b = Math.min(Math.max(Math.min(4 * v + 0.5, -4 * v + 2.5), 0), 1);
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+export type ColorScheme = "site" | "standard";
+
+export function attributionColor(value: number, scheme: ColorScheme = "site"): [number, number, number] {
+  return scheme === "standard" ? jetAttributionColor(value) : siteAttributionColor(value);
+}
+
+const LEGEND_STOPS = [0, 0.25, 0.5, 0.75, 1];
+
+/** Horizontal legend for the active colormap — without this, the heatmap is
+ * an ungrounded blob with no indication of what the colors mean (found via
+ * direct user feedback on the first render of this panel). */
+function AttributionLegend({ scheme }: { scheme: ColorScheme }) {
+  const gradientStops = LEGEND_STOPS.map((stop) => {
+    const [r, g, b] = attributionColor(stop, scheme);
+    return `rgb(${r},${g},${b}) ${stop * 100}%`;
+  }).join(", ");
+  return (
+    <Box sx={{ width: "100%" }}>
+      <Box
+        sx={{
+          height: 10,
+          borderRadius: "4px",
+          background: `linear-gradient(90deg, ${gradientStops})`,
+          border: `1px solid ${tokens.line}`,
+        }}
+      />
+      <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
+        <Typography variant="caption" color="text.secondary">
+          Low attribution
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          High attribution
+        </Typography>
+      </Stack>
+    </Box>
+  );
 }
 
 /**
@@ -60,6 +130,7 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedNpyFloat32 | null>(null);
   const [slice, setSlice] = useState(0);
+  const [colorScheme, setColorScheme] = useState<ColorScheme>("site");
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   function handleToggle() {
@@ -95,7 +166,7 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
     for (let i = 0; i < dimX; i++) {
       for (let j = 0; j < dimY; j++) {
         const value = parsed.data[i * dimY * depth + j * depth + slice];
-        const [r, g, b] = attributionColor(value);
+        const [r, g, b] = attributionColor(value, colorScheme);
         const pixelIndex = (j * dimX + i) * 4;
         imageData.data[pixelIndex] = r;
         imageData.data[pixelIndex + 1] = g;
@@ -104,7 +175,7 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
       }
     }
     ctx.putImageData(imageData, 0, 0);
-  }, [parsed, slice]);
+  }, [parsed, slice, colorScheme]);
 
   return (
     <Card sx={{ ...quietSurface() }}>
@@ -146,6 +217,23 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
 
             {parsed && (
               <Stack spacing={1} alignItems="center">
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={colorScheme}
+                  onChange={(_, value: ColorScheme | null) => {
+                    if (value) setColorScheme(value);
+                  }}
+                  aria-label="Grad-CAM colormap"
+                >
+                  <ToggleButton value="standard" aria-label="Standard colormap">
+                    Standard
+                  </ToggleButton>
+                  <ToggleButton value="site" aria-label="Website colors">
+                    Website colors
+                  </ToggleButton>
+                </ToggleButtonGroup>
+
                 <Box
                   sx={{
                     width: "100%",
@@ -158,7 +246,7 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
                   <canvas
                     ref={canvasRef}
                     role="img"
-                    aria-label={`Grad-CAM attribution heatmap, slice ${slice + 1} of ${sliceCount}`}
+                    aria-label={`Grad-CAM attribution heatmap, slice ${slice + 1} of ${sliceCount}, ${colorScheme} colormap`}
                     style={{ width: "100%", height: "auto", display: "block" }}
                   />
                 </Box>
@@ -178,6 +266,9 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
                     valueLabelDisplay="auto"
                     valueLabelFormat={(v) => `${v + 1}`}
                   />
+                </Box>
+                <Box sx={{ width: "100%", maxWidth: 320, px: 1 }}>
+                  <AttributionLegend scheme={colorScheme} />
                 </Box>
               </Stack>
             )}
