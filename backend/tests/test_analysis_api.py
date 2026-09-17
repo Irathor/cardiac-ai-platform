@@ -10,7 +10,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
-from app.core.model_registry import MODEL_NAME_CNN3D
+from app.core.model_registry import MODEL_NAME_CNN3D, MODEL_NAME_UNET
 from app.services import analysis_service
 from tests.conftest import (
     assign_doctor,
@@ -405,3 +405,138 @@ def test_unassigned_doctor_cannot_fetch_gradcam_for_someone_elses_analysis(
     stranger_token = _login(client, "stranger-gradcam@cardiacai-test.dev")
     response = client.get(f"/api/v1/analyses/{analysis_id}/gradcam", headers=_auth(stranger_token))
     assert response.status_code == 404
+
+
+def _fake_unet_mask(lv_label_slice) -> np.ndarray:
+    """Same label convention as test_auto_segmentation_api.py's _fake_mask:
+    label 3 = LV cavity, label 2 = myocardium. `lv_label_slice` varies the
+    LV cavity's extent between ED/ES calls so the derived EJECTION_FRACTION
+    isn't degenerately zero."""
+    mask = np.zeros((6, 6, 3), dtype=np.int32)
+    mask[lv_label_slice, lv_label_slice, :] = 3
+    mask[3:5, 3:5, :] = 2
+    return mask
+
+
+def test_cnn3d_analysis_also_persists_biomarker_consistency_from_auto_segmented_ed_es(
+    client, db_session, demo_org, monkeypatch
+):
+    """EPIC-12: on top of the classification itself and Grad-CAM (EPIC-3), a
+    real CNN3D analysis also auto-segments the ED and ES series (reusing
+    auto_segmentation_service.generate_auto_segmentation, real Segmentation
+    rows), derives biomarkers from them, and compares those biomarkers
+    against the (demo, here — no nearest-centroid PRODUCTION model
+    registered) prototypes for the class CNN3D predicted."""
+    doctor = make_user(db_session, demo_org, email="doc-biocons-1@cardiacai-test.dev", role="DOCTOR")
+    patient = make_patient(db_session, demo_org, identifier="PT-BIOCONS-1")
+    assign_doctor(db_session, patient=patient, doctor=doctor)
+    study = make_study(db_session, patient=patient)
+    token = _login(client, "doc-biocons-1@cardiacai-test.dev")
+
+    volume = np.zeros((6, 6, 3), dtype=np.int16)
+    series_ids = {}
+    for phase in ("ED", "ES"):
+        upload = client.post(
+            f"/api/v1/studies/{study.id}/series",
+            headers=_auth(token),
+            files={"file": (f"{phase}.nii.gz", _nifti_bytes(volume), "application/octet-stream")},
+            data={"series_type": "CINE_SHORT_AXIS", "phase": phase},
+        )
+        assert upload.status_code == 201
+        series_ids[phase] = upload.json()["id"]
+
+    make_model_version(db_session, name=MODEL_NAME_CNN3D, status="PRODUCTION")
+    make_model_version(db_session, name=MODEL_NAME_UNET, status="PRODUCTION")
+
+    def fake_classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes):
+        return {
+            "predicted_class": "DILATED_CARDIOMYOPATHY",
+            "probabilities": {
+                "NORMAL": 0.05, "DILATED_CARDIOMYOPATHY": 0.7, "HYPERTROPHIC_CARDIOMYOPATHY": 0.1,
+                "MYOCARDIAL_INFARCTION": 0.1, "ABNORMAL_RIGHT_VENTRICLE": 0.05,
+            },
+        }
+
+    monkeypatch.setattr(analysis_service.dl_inference_client, "classify_cnn3d", fake_classify_cnn3d)
+
+    masks = iter([_fake_unet_mask(slice(0, 4)), _fake_unet_mask(slice(0, 2))])  # ED (bigger LV), then ES (smaller)
+
+    def fake_segment_unet(*, image_bytes: bytes):
+        assert image_bytes
+        return next(masks), 1.0, 1.0, 1.0
+
+    monkeypatch.setattr(analysis_service.auto_segmentation_service.dl_inference_client, "segment_unet", fake_segment_unet)
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["status"] == "COMPLETED"
+    assert result["predicted_class"] == "DILATED_CARDIOMYOPATHY"
+
+    consistency = result["biomarker_consistency"]
+    assert result["biomarker_consistency_error"] is None
+    assert consistency is not None
+    assert consistency["predicted_class"] == "DILATED_CARDIOMYOPATHY"
+    assert consistency["reference_source"] == analysis_service.DEMO_MODEL_VERSION
+    assert {pf["feature"] for pf in consistency["per_feature"]} == {
+        "EJECTION_FRACTION", "LV_EDV", "RV_EDV", "LV_MASS",
+    }
+    assert set(consistency["distance_to_each_class"]) == {
+        "NORMAL", "DILATED_CARDIOMYOPATHY", "HYPERTROPHIC_CARDIOMYOPATHY",
+        "MYOCARDIAL_INFARCTION", "ABNORMAL_RIGHT_VENTRICLE",
+    }
+
+    # Real Segmentation rows were created for both ED and ES — not an
+    # ephemeral/discarded computation (EPIC-12's "Contrato técnico" point 2).
+    for phase in ("ED", "ES"):
+        segmentations = client.get(
+            f"/api/v1/series/{series_ids[phase]}/segmentations", headers=_auth(token)
+        ).json()
+        assert len(segmentations) == 1
+        assert segmentations[0]["model_version"].startswith(f"{MODEL_NAME_UNET}@")
+
+
+def test_cnn3d_analysis_stays_completed_when_biomarker_consistency_fails(
+    client, db_session, demo_org, monkeypatch
+):
+    """EPIC-12 point 5: no U-Net PRODUCTION model registered means the
+    auto-segmentation this signal depends on can't run — the CNN3D
+    classification itself already succeeded and must stay COMPLETED, with an
+    honest biomarker_consistency_error instead of biomarker_consistency."""
+    doctor = make_user(db_session, demo_org, email="doc-biocons-2@cardiacai-test.dev", role="DOCTOR")
+    patient = make_patient(db_session, demo_org, identifier="PT-BIOCONS-2")
+    assign_doctor(db_session, patient=patient, doctor=doctor)
+    study = make_study(db_session, patient=patient)
+    token = _login(client, "doc-biocons-2@cardiacai-test.dev")
+
+    volume = np.zeros((6, 6, 3), dtype=np.int16)
+    for phase in ("ED", "ES"):
+        upload = client.post(
+            f"/api/v1/studies/{study.id}/series",
+            headers=_auth(token),
+            files={"file": (f"{phase}.nii.gz", _nifti_bytes(volume), "application/octet-stream")},
+            data={"series_type": "CINE_SHORT_AXIS", "phase": phase},
+        )
+        assert upload.status_code == 201
+
+    make_model_version(db_session, name=MODEL_NAME_CNN3D, status="PRODUCTION")
+    # Deliberately no "cardiac-segmentation-unet" PRODUCTION model.
+
+    def fake_classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes):
+        return {
+            "predicted_class": "NORMAL",
+            "probabilities": {"NORMAL": 0.9, "DILATED_CARDIOMYOPATHY": 0.1},
+        }
+
+    monkeypatch.setattr(analysis_service.dl_inference_client, "classify_cnn3d", fake_classify_cnn3d)
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["status"] == "COMPLETED"
+    assert result["predicted_class"] == "NORMAL"
+    assert result["biomarker_consistency"] is None
+    assert result["biomarker_consistency_error"] is not None
+    assert "Consistencia de biomarcadores no disponible" in result["biomarker_consistency_error"]

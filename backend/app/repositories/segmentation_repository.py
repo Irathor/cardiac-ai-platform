@@ -1,4 +1,6 @@
 import uuid
+from collections import defaultdict
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -49,3 +51,26 @@ def list_measurements(db: Session, segmentation_id: uuid.UUID) -> list[Biomarker
         .order_by(BiomarkerMeasurement.name.asc())
     )
     return list(db.execute(stmt).scalars())
+
+
+def list_recent_measurements_by_name(
+    db: Session, *, since: datetime, limit: int
+) -> dict[str, list[float]]:
+    """Recent biomarker measurements grouped by `name` (EPIC-7, "Contrato
+    técnico" point 2): every `BiomarkerMeasurement` whose owning
+    `Segmentation.created_at >= since`, ordered by `Segmentation.created_at`
+    descending, with `limit` applied *per biomarker name* — not `limit`
+    rows total across every name. Used by drift_service as the "recent"
+    sample for the KS test, independent of the base sample computed from a
+    DatasetVersion (see drift_service.get_drift_report)."""
+    stmt = (
+        select(BiomarkerMeasurement.name, BiomarkerMeasurement.value, Segmentation.created_at)
+        .join(Segmentation, BiomarkerMeasurement.segmentation_id == Segmentation.id)
+        .where(Segmentation.created_at >= since)
+        .order_by(Segmentation.created_at.desc())
+    )
+    by_name: dict[str, list[float]] = defaultdict(list)
+    for name, value, _created_at in db.execute(stmt).all():
+        if len(by_name[name]) < limit:
+            by_name[name].append(value)
+    return dict(by_name)

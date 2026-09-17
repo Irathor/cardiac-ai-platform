@@ -53,3 +53,36 @@ class ModelRegistryDivergenceOut(BaseModel):
     expected_alias: str | None
     actual_alias: str | None
     fetch_error: str | None = None
+
+
+class BiomarkerDriftOut(BaseModel):
+    biomarker_name: str
+    ks_statistic: float | None
+    p_value: float | None
+    base_sample_size: int
+    recent_sample_size: int
+    drift_detected: bool
+    skipped_reason: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class PredictionDriftOut(BaseModel):
+    psi: float | None
+    base_sample_size: int
+    recent_sample_size: int
+    severity: str
+    drift_detected: bool
+    skipped_reason: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class ModelDriftOut(BaseModel):
+    model_version_id: uuid.UUID
+    evaluated_at: datetime
+    biomarkers: list[BiomarkerDriftOut]
+    biomarkers_skipped_reason: str | None
+    prediction: PredictionDriftOut
+
+    model_config = {"from_attributes": True}

@@ -37,17 +37,16 @@ Estas Epics ya están redactadas como ficheros (roadmap completo, propuesto por 
 pero no pueden empezar a implementarse hasta que el usuario tome una decisión concreta que
 todavía no se ha pedido. No se fuerza su implementación por rellenar el hueco.
 
-- [EPIC-7: Detección de drift sobre biomarcadores/predicciones](epics/EPIC-7-deteccion-drift.md)
-  — requiere decidir el mecanismo de drift (librería tipo Evidently vs. estadístico propio).
 - [EPIC-8: Deployment cloud](epics/EPIC-8-deployment-cloud.md) — requiere decidir el
   proveedor cloud.
 - [EPIC-9: Infrastructure as Code con Terraform](epics/EPIC-9-infrastructure-as-code-terraform.md)
   — depende de la decisión de proveedor cloud de EPIC-8.
 
-Además, el reentrenamiento automático disparado por drift (mencionado como "Fuera de
-alcance" en EPIC-7) es una dirección conocida pero sin forma concreta todavía — no se
-redacta como fast-follow hasta que exista un mecanismo de drift real (EPIC-7) sobre el que
-definir el disparo automático.
+El reentrenamiento automático disparado por drift (mencionado como "Fuera de alcance" en
+[EPIC-7: Detección de drift sobre biomarcadores/predicciones](epics/EPIC-7-deteccion-drift.md),
+ya redactada y lista para implementar tras la decisión de mecanismo del usuario) es una
+dirección conocida pero sin forma concreta todavía — no se redacta como fast-follow hasta que
+exista un mecanismo de drift real (EPIC-7) sobre el que definir el disparo automático.
 
 ## Fuera de alcance
 

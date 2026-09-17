@@ -38,7 +38,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from time import monotonic
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 
 _MULTIPROC_DIR = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
 
@@ -83,6 +83,51 @@ DL_INFERENCE_REQUESTS_TOTAL = Counter(
     "Count of real-time inference requests served to the host DL training "
     "runner, by model type and outcome.",
     labelnames=("model_type", "outcome"),
+)
+
+
+# EPIC-7 (drift detection, docs/epics/EPIC-7-deteccion-drift.md, "Contrato
+# técnico" point 5): last-known-value gauges, not Counter/Histogram — they
+# are recalculated only as a side effect of app.services.drift_service.
+# get_drift_report (i.e. only when GET /model-versions/{id}/drift is
+# called), never on every /metrics scrape (that traversal is too expensive
+# to repeat every ~15s — see get_drift_report's own in-memory cache).
+#
+# multiprocess_mode="sum" (not the Gauge default "all"): the calculation
+# always runs inside whichever `backend`/uvicorn process handled that GET
+# request (never the Celery `worker`, unlike dl_inference_* above — this is
+# a pure read, no need to hand it to the worker), so only one process at a
+# time ever calls .set() for a given model_version_id. "sum" across
+# processes then yields the real value without duplicating it or needing
+# the "all" mode's extra `pid` label (see
+# https://prometheus.github.io/client_python/multiprocess/#gauge, "sum":
+# "useful for cases where multiple processes are recording a metric which
+# only one process at a time updates").
+BIOMARKER_DRIFT_KS_STATISTIC = Gauge(
+    "biomarker_drift_ks_statistic",
+    "Kolmogorov-Smirnov statistic comparing recent vs. training-base "
+    "biomarker measurements for the PRODUCTION model version evaluated, "
+    "by biomarker name. Only present after GET /model-versions/{id}/drift "
+    "has been called at least once in this process.",
+    labelnames=("model_version_id", "biomarker_name"),
+    multiprocess_mode="sum",
+)
+
+BIOMARKER_DRIFT_PVALUE = Gauge(
+    "biomarker_drift_pvalue",
+    "P-value of the Kolmogorov-Smirnov test comparing recent vs. "
+    "training-base biomarker measurements for the PRODUCTION model "
+    "version evaluated, by biomarker name.",
+    labelnames=("model_version_id", "biomarker_name"),
+    multiprocess_mode="sum",
+)
+
+PREDICTION_DRIFT_PSI = Gauge(
+    "prediction_drift_psi",
+    "Population Stability Index comparing recent vs. base predicted-class "
+    "distribution for the PRODUCTION model version evaluated.",
+    labelnames=("model_version_id",),
+    multiprocess_mode="sum",
 )
 
 

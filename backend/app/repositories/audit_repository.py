@@ -36,3 +36,24 @@ def record(
 def list_recent(db: Session, limit: int = 100) -> list[AuditEvent]:
     stmt = select(AuditEvent).order_by(AuditEvent.occurred_at.desc()).limit(limit)
     return list(db.execute(stmt).scalars())
+
+
+def get_latest_event(
+    db: Session, *, action: str, resource_type: str, resource_id: str
+) -> AuditEvent | None:
+    """Most recent audit event matching this action/resource (EPIC-7,
+    "Contrato técnico" point 3) — used by drift_service to anchor the
+    prediction-drift base window to a model version's most recent
+    promotion, not its first one, so a rollback-and-repromote doesn't drag
+    in predictions from an earlier, unrelated stint in PRODUCTION."""
+    stmt = (
+        select(AuditEvent)
+        .where(
+            AuditEvent.action == action,
+            AuditEvent.resource_type == resource_type,
+            AuditEvent.resource_id == resource_id,
+        )
+        .order_by(AuditEvent.occurred_at.desc())
+        .limit(1)
+    )
+    return db.execute(stmt).scalar_one_or_none()

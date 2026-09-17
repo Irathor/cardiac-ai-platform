@@ -3,7 +3,9 @@ import pytest
 from cardiac_ai_ml.classification import (
     FEATURE_NAMES,
     DiagnosisClass,
+    Prototypes,
     _class_score,
+    biomarker_consistency,
     classify_demo,
     explain_demo,
     shapley_values,
@@ -110,3 +112,82 @@ def test_explain_demo_gives_near_zero_attribution_to_at_baseline_features():
     assert attributions["LV_EDV"] == pytest.approx(0.0, abs=1e-9)
     assert attributions["RV_EDV"] == pytest.approx(0.0, abs=1e-9)
     assert abs(attributions["LV_MASS"]) > 0
+
+
+# --- biomarker_consistency ---------------------------------------------
+
+_TEST_PROTOTYPE = {"EJECTION_FRACTION": 60.0, "LV_EDV": 140.0, "RV_EDV": 140.0, "LV_MASS": 120.0}
+_OTHER_PROTOTYPE = {"EJECTION_FRACTION": 20.0, "LV_EDV": 260.0, "RV_EDV": 140.0, "LV_MASS": 150.0}
+_TEST_PROTOTYPES: Prototypes = {"TESTCLASS": _TEST_PROTOTYPE, "OTHERCLASS": _OTHER_PROTOTYPE}
+
+
+def test_biomarker_consistency_flags_close_biomarkers_as_consistent():
+    # Every feature is half a FEATURE_SCALES unit away from the prototype
+    # (sign alternated to also exercise the negative-deviation path), so by
+    # hand: scaled_deviation is exactly +/-0.5 for all four features, well
+    # inside the |.| <= 1.0 consistency threshold.
+    features = {
+        "EJECTION_FRACTION": 60.0 + 0.5 * 15.0,  # 67.5 -> +0.5
+        "LV_EDV": 140.0 + 0.5 * 50.0,  # 165.0 -> +0.5
+        "RV_EDV": 140.0 - 0.5 * 50.0,  # 115.0 -> -0.5
+        "LV_MASS": 120.0 + 0.5 * 40.0,  # 140.0 -> +0.5
+    }
+
+    result = biomarker_consistency(features, _TEST_PROTOTYPES, "TESTCLASS", reference_source="demo-heuristic-v1")
+
+    assert result.predicted_class == "TESTCLASS"
+    assert result.reference_source == "demo-heuristic-v1"
+
+    expected_signed_deviation = {
+        "EJECTION_FRACTION": 0.5,
+        "LV_EDV": 0.5,
+        "RV_EDV": -0.5,
+        "LV_MASS": 0.5,
+    }
+    by_feature = {fc.feature: fc for fc in result.per_feature}
+    assert set(by_feature) == set(FEATURE_NAMES)
+    for name in FEATURE_NAMES:
+        fc = by_feature[name]
+        assert fc.derived_value == pytest.approx(features[name])
+        assert fc.expected_value_for_predicted_class == pytest.approx(_TEST_PROTOTYPE[name])
+        assert fc.scaled_deviation == pytest.approx(expected_signed_deviation[name])
+        assert fc.consistent is True
+
+    # sqrt(0.5^2 * 4) == sqrt(1.0) == 1.0, by hand.
+    assert result.distance_to_each_class["TESTCLASS"] == pytest.approx(1.0)
+    assert set(result.distance_to_each_class) == {"TESTCLASS", "OTHERCLASS"}
+
+
+def test_biomarker_consistency_flags_diverging_biomarker_as_inconsistent():
+    # Only LV_MASS moves, by two full FEATURE_SCALES units (80 g, scale 40):
+    # scaled_deviation == 2.0, outside the |.| <= 1.0 threshold, so that
+    # feature alone must be flagged inconsistent while the rest (unchanged,
+    # scaled_deviation == 0.0) stay consistent.
+    features = {**_TEST_PROTOTYPE, "LV_MASS": 200.0}
+
+    result = biomarker_consistency(features, _TEST_PROTOTYPES, "TESTCLASS", reference_source="demo-heuristic-v1")
+
+    by_feature = {fc.feature: fc for fc in result.per_feature}
+    assert by_feature["LV_MASS"].scaled_deviation == pytest.approx(2.0)
+    assert by_feature["LV_MASS"].consistent is False
+    for name in ("EJECTION_FRACTION", "LV_EDV", "RV_EDV"):
+        assert by_feature[name].scaled_deviation == pytest.approx(0.0)
+        assert by_feature[name].consistent is True
+
+    # sqrt(2.0^2) == 2.0, by hand.
+    assert result.distance_to_each_class["TESTCLASS"] == pytest.approx(2.0)
+
+    as_dict = result.as_dict()
+    assert as_dict["predicted_class"] == "TESTCLASS"
+    assert as_dict["per_feature"][0]["feature"] == FEATURE_NAMES[0]
+    assert any(not row["consistent"] for row in as_dict["per_feature"])
+
+
+def test_biomarker_consistency_rejects_missing_features():
+    with pytest.raises(ValueError):
+        biomarker_consistency({"EJECTION_FRACTION": 60.0}, _TEST_PROTOTYPES, "TESTCLASS", reference_source="x")
+
+
+def test_biomarker_consistency_rejects_unknown_predicted_class():
+    with pytest.raises(ValueError):
+        biomarker_consistency(_TEST_PROTOTYPE, _TEST_PROTOTYPES, "NOT_A_CLASS", reference_source="x")

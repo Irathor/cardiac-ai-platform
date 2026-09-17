@@ -10,13 +10,14 @@ from app.models.model_version import ModelVersion
 from app.models.user import User
 from app.repositories import model_repository
 from app.schemas.model import (
+    ModelDriftOut,
     ModelEvaluationOut,
     ModelPromoteRequest,
     ModelRegistryDivergenceOut,
     ModelReviewRequest,
     ModelVersionOut,
 )
-from app.services import model_service
+from app.services import drift_service, model_service
 
 router = APIRouter()
 
@@ -77,6 +78,26 @@ def list_model_evaluations(
         ModelEvaluationOut.model_validate(e)
         for e in model_repository.list_evaluations(db, model_version_id)
     ]
+
+
+@router.get("/model-versions/{model_version_id}/drift")
+def get_model_version_drift(
+    model_version_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(*_VIEW_ROLES)),
+) -> ModelDriftOut:
+    """Deriva de biomarcadores/predicciones para el ModelVersion PRODUCTION
+    dado (EPIC-7, docs/epics/EPIC-7-deteccion-drift.md). Read-only, mismo
+    RBAC que registry-divergence. Declarado después de
+    /model-versions/{model_version_id} — no hay colisión de path aquí
+    (a diferencia de registry-divergence), "/drift" cuelga de un id ya
+    parseado."""
+    model_version = _load_model_version(db, model_version_id)
+    try:
+        report = drift_service.get_drift_report(db, model_version=model_version)
+    except drift_service.ModelNotInProductionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return ModelDriftOut.model_validate(report)
 
 
 @router.post("/model-versions/{model_version_id}/review")

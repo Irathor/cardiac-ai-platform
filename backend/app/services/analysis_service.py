@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 import numpy as np
 from cardiac_ai_ml.biomarkers import ejection_fraction_percent
 from cardiac_ai_ml.classification import (
+    _DEMO_PROTOTYPES,
     DiagnosisClass,
+    biomarker_consistency as compute_biomarker_consistency,
     classify_demo,
     classify_with_prototypes,
     explain_demo,
@@ -33,7 +35,8 @@ from app.repositories import (
     model_repository,
     segmentation_repository,
 )
-from app.services import dl_inference_client, imaging_service
+from app.services import auto_segmentation_service, dl_inference_client, imaging_service
+from app.services.auto_segmentation_service import ModelNotAvailableError
 from app.services.dl_inference_client import InferenceRunnerError
 from app.storage import object_storage
 
@@ -62,6 +65,18 @@ CNN3D_NO_FEATURE_ATTRIBUTION_REASON = (
 # varies case to case (layer hook, zero gradient...) so it's worth surfacing
 # per-analysis instead of a single static string.
 _GRADCAM_UNKNOWN_REASON = "no reason reported by the inference runner"
+
+# EPIC-12: `biomarker_consistency` (see cardiac_ai_ml.classification) is an
+# *indirect consistency signal* for a CNN3D analysis, never to be confused
+# with `feature_attributions` (which stays null for CNN3D, see
+# CNN3D_NO_FEATURE_ATTRIBUTION_REASON above). It compares biomarkers derived
+# by a completely independent pipeline (U-Net auto-segmentation of the same
+# ED/ES series) against the nearest-centroid classifier's prototypes for the
+# class CNN3D predicted — a post-hoc sanity check computed with a different
+# classifier, not an exact attribution of CNN3D itself. Same non-blocking
+# pattern as Grad-CAM (EPIC-3, point 4): failure here never fails the
+# AIAnalysis.
+_BIOMARKER_CONSISTENCY_ERROR_PREFIX = "Consistencia de biomarcadores no disponible para este análisis"
 
 
 def _gradcam_storage_key(analysis_id: uuid.UUID) -> str:
@@ -186,6 +201,40 @@ def execute_analysis(db: Session, *, analysis_id: uuid.UUID) -> None:
                 analysis.gradcam_storage_key = None
                 reason = prediction.get("gradcam_error") or _GRADCAM_UNKNOWN_REASON
                 analysis.gradcam_error = f"Grad-CAM no disponible para este análisis: {reason}"
+
+            # EPIC-12: complementary indirect consistency signal — see
+            # _BIOMARKER_CONSISTENCY_ERROR_PREFIX above. Own try/except so a
+            # failure here (no U-Net PRODUCTION, runner down, or a missing
+            # requesting user) never escalates to the
+            # `except (MissingPhaseDataError, InferenceRunnerError)` below,
+            # which would incorrectly mark the whole (already-successful)
+            # classification as FAILED.
+            try:
+                actor = db.get(User, analysis.requested_by)
+                if actor is None:
+                    raise MissingPhaseDataError(
+                        "no se pudo identificar al usuario solicitante para generar la auto-segmentación"
+                    )
+                auto_segmentation_service.generate_auto_segmentation(db, actor=actor, series=ed_series)
+                auto_segmentation_service.generate_auto_segmentation(db, actor=actor, series=es_series)
+                consistency_features = collect_features(db, study)
+
+                production_prototype_model = model_repository.get_production(db, MODEL_NAME)
+                if production_prototype_model is not None:
+                    consistency_prototypes = production_prototype_model.prototypes
+                    reference_source = f"{production_prototype_model.name}@{production_prototype_model.id}"
+                else:
+                    consistency_prototypes = _DEMO_PROTOTYPES
+                    reference_source = DEMO_MODEL_VERSION
+
+                consistency = compute_biomarker_consistency(
+                    consistency_features, consistency_prototypes, analysis.predicted_class, reference_source
+                )
+                analysis.biomarker_consistency = consistency.as_dict()
+                analysis.biomarker_consistency_error = None
+            except (ModelNotAvailableError, InferenceRunnerError, MissingPhaseDataError) as exc:
+                analysis.biomarker_consistency = None
+                analysis.biomarker_consistency_error = f"{_BIOMARKER_CONSISTENCY_ERROR_PREFIX}: {exc}"
         else:
             features = collect_features(db, study)
             production_model = model_repository.get_production(db, MODEL_NAME)

@@ -24,6 +24,14 @@ class AIAnalysisOut(BaseModel):
     # property, not a stored column).
     gradcam_available: bool
     gradcam_error: str | None
+    # EPIC-12: indirect consistency signal between U-Net-derived biomarkers
+    # and the nearest-centroid classifier's prototypes for the class CNN3D
+    # predicted — see AIAnalysis.biomarker_consistency's docstring. NOT an
+    # exact attribution; only ever populated for a CNN3D_CLASSIFICATION
+    # analysis. `biomarker_consistency_error` carries an honest reason when
+    # this signal itself couldn't be computed, without failing the analysis.
+    biomarker_consistency: dict[str, object] | None
+    biomarker_consistency_error: str | None
     created_at: datetime
     completed_at: datetime | None
 

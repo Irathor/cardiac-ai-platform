@@ -56,6 +56,22 @@ class AIAnalysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     gradcam_storage_key: Mapped[str | None] = mapped_column(String(500))
     gradcam_error: Mapped[str | None] = mapped_column(String(2000))
 
+    # EPIC-12: indirect consistency signal for a CNN3D_CLASSIFICATION run —
+    # NOT an exact attribution (see feature_attributions above, which stays
+    # null for CNN3D). Compares biomarkers derived by an independent U-Net
+    # auto-segmentation of the same ED/ES series against the nearest-
+    # centroid classifier's prototypes for the class CNN3D predicted (see
+    # cardiac_ai_ml.classification.biomarker_consistency's `.as_dict()` for
+    # the exact shape). `biomarker_consistency_error` holds an honest reason
+    # when this signal itself failed (no U-Net PRODUCTION, runner down,
+    # missing requesting user...) — same non-blocking pattern as
+    # `gradcam_error` above, this never fails the AIAnalysis itself. Only
+    # ever populated for the CNN3D_CLASSIFICATION path, never for the
+    # tabular nearest-centroid path (which already has the real, exact
+    # `feature_attributions` for that purpose).
+    biomarker_consistency: Mapped[dict | None] = mapped_column(JSON())
+    biomarker_consistency_error: Mapped[str | None] = mapped_column(String(2000))
+
     requested_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
