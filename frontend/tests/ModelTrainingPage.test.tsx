@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../src/api/auth";
 import * as datasetsApi from "../src/api/datasets";
 import * as trainingApi from "../src/api/training";
-import { cnn3dMetrics, makeEvaluation, makeModelVersion } from "./fixtures/training";
+import { cnn3dMetrics, makeEvaluation, makeModelVersion, modelDriftReport } from "./fixtures/training";
 
 vi.mock("../src/api/auth");
 vi.mock("../src/api/datasets");
@@ -82,5 +82,38 @@ describe("ModelTrainingPage", () => {
     expect(screen.getByRole("tab", { name: "Classification" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Calibration" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Validation" })).toBeInTheDocument();
+  });
+
+  it("does not show the Drift tab for a model version that is not in production", async () => {
+    mockedTraining.listModelVersions.mockResolvedValue([
+      makeModelVersion({ id: "mv-1", name: "cardiac-classifier-cnn3d", status: "ACTIVE", created_at: "2026-01-02T00:00:00Z" }),
+    ]);
+    mockedTraining.listModelEvaluations.mockResolvedValue([
+      makeEvaluation(cnn3dMetrics as unknown as Record<string, unknown>, { model_version_id: "mv-1" }),
+    ]);
+    await loginSuccessfully();
+
+    await userEvent.click(await screen.findByText("cardiac-classifier-cnn3d"));
+
+    await screen.findByRole("tab", { name: "Summary" });
+    expect(screen.queryByRole("tab", { name: "Drift" })).not.toBeInTheDocument();
+    expect(mockedTraining.getModelVersionDrift).not.toHaveBeenCalled();
+  });
+
+  it("shows the Drift tab and its report for a model version in production", async () => {
+    mockedTraining.listModelVersions.mockResolvedValue([
+      makeModelVersion({ id: "mv-1", name: "cardiac-classifier-cnn3d", status: "PRODUCTION", created_at: "2026-01-02T00:00:00Z" }),
+    ]);
+    mockedTraining.listModelEvaluations.mockResolvedValue([
+      makeEvaluation(cnn3dMetrics as unknown as Record<string, unknown>, { model_version_id: "mv-1" }),
+    ]);
+    mockedTraining.getModelVersionDrift.mockResolvedValue(modelDriftReport);
+    await loginSuccessfully();
+
+    await userEvent.click(await screen.findByText("cardiac-classifier-cnn3d"));
+    await userEvent.click(await screen.findByRole("tab", { name: "Drift" }));
+
+    expect(await screen.findByText("LVEF")).toBeInTheDocument();
+    expect(screen.getByText("Severity: NONE")).toBeInTheDocument();
   });
 });

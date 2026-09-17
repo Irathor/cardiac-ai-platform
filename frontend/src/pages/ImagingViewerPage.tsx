@@ -31,6 +31,8 @@ import {
 } from "../api/imaging";
 import { alpha } from "@mui/material/styles";
 
+import { BiomarkerConsistencyPanel } from "../components/BiomarkerConsistencyPanel";
+import { GradcamPanel } from "../components/GradcamPanel";
 import { LoginCard } from "../components/LoginCard";
 import { NiftiViewer } from "../components/NiftiViewer";
 import { heroSurface, tokens } from "../theme";
@@ -237,6 +239,12 @@ export function ImagingViewerPage() {
                         )}
                       </Stack>
                     )}
+                    {analysis.status === "COMPLETED" && (
+                      <BiomarkerConsistencyPanel
+                        consistency={analysis.biomarker_consistency}
+                        error={analysis.biomarker_consistency_error}
+                      />
+                    )}
                   </CardContent>
                 </Card>
               </Grow>
@@ -300,6 +308,19 @@ export function ImagingViewerPage() {
                     </Card>
                   </Fade>
                 )}
+                {token &&
+                  analysis &&
+                  analysis.status === "COMPLETED" &&
+                  (analysis.gradcam_available || analysis.gradcam_error) && (
+                    <Box sx={{ mt: 2 }}>
+                      <GradcamPanel
+                        analysisId={analysis.id}
+                        token={token}
+                        gradcamAvailable={analysis.gradcam_available}
+                        gradcamError={analysis.gradcam_error}
+                      />
+                    </Box>
+                  )}
                 {biomarkers.length > 0 && (
                   <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
                     {biomarkers.map((b) => (

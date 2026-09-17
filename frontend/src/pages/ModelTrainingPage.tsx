@@ -26,6 +26,7 @@ import { useEffect, useState } from "react";
 import { login as loginRequest } from "../api/auth";
 import { listDatasets, listDatasetVersions } from "../api/datasets";
 import {
+  getModelVersionDrift,
   getTrainingRun,
   listModelEvaluations,
   listModelVersions,
@@ -41,8 +42,10 @@ import {
   type TrainingModelType,
   type UnetMetrics,
 } from "../api/training";
+import { ApiError } from "../api/client";
 import { CalibrationTab } from "../components/training/CalibrationTab";
 import { ClassificationTab } from "../components/training/ClassificationTab";
+import { DriftTab } from "../components/training/DriftTab";
 import { SegmentationTab } from "../components/training/SegmentationTab";
 import { SummaryTab } from "../components/training/SummaryTab";
 import { ValidationTab } from "../components/training/ValidationTab";
@@ -55,7 +58,7 @@ const MODEL_TYPE_OPTIONS: Array<{ value: TrainingModelType; label: string }> = [
   { value: "CNN3D_CLASSIFICATION", label: "CNN3D classification" },
 ];
 
-type TabKey = "summary" | "segmentation" | "classification" | "calibration" | "validation";
+type TabKey = "summary" | "segmentation" | "classification" | "calibration" | "validation" | "drift";
 
 type RunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
 
@@ -87,6 +90,15 @@ function tabsForModel(name: string): Array<{ key: TabKey; label: string }> {
     { key: "classification", label: "Classification" },
     { key: "validation", label: "Validation" },
   ];
+}
+
+/** Unlike the other tabs (driven by a fixed ModelEvaluationOut generated at
+ * training time), drift depends only on the version's current status and is
+ * computed on demand — kept separate from tabsForModel rather than folded
+ * into it (see EPIC-16 contract). Available for any model type, not just
+ * CNN3D, since the backend decides case-by-case whether biomarkers apply. */
+function driftTabAvailable(version: ModelVersionOut | null): boolean {
+  return version?.status === "PRODUCTION";
 }
 
 /**
@@ -167,6 +179,23 @@ export function ModelTrainingPage() {
     enabled: !!token && !!selectedModelVersionId,
   });
 
+  // Computed here (ahead of the other derived values below) because
+  // driftQuery's `enabled` needs the selected version's current status.
+  const sortedModelVersions: ModelVersionOut[] = [...(modelVersionsQuery.data ?? [])].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+  const selectedModelVersion = sortedModelVersions.find((v) => v.id === selectedModelVersionId) ?? null;
+
+  // Point-in-time inspection, not a live monitor: no refetchInterval — the
+  // backend already caches this for 300s (EPIC-7 point 5). Only fetched once
+  // the version is confirmed PRODUCTION, so the 409 "not in production" case
+  // should only ever be hit on a real race, not on normal navigation.
+  const driftQuery = useQuery({
+    queryKey: ["model-drift", selectedModelVersionId, token],
+    queryFn: () => getModelVersionDrift(selectedModelVersionId as string, token as string),
+    enabled: !!token && !!selectedModelVersionId && driftTabAvailable(selectedModelVersion),
+  });
+
   useEffect(() => {
     if (activeRunQuery.data?.status === "COMPLETED") {
       queryClient.invalidateQueries({ queryKey: ["model-versions", token] });
@@ -202,15 +231,20 @@ export function ModelTrainingPage() {
   const isRunInFlight = activeRunQuery.data?.status === "RUNNING" || activeRunQuery.data?.status === "QUEUED";
   const isDlModel = modelType !== "NEAREST_CENTROID";
 
-  const sortedModelVersions: ModelVersionOut[] = [...(modelVersionsQuery.data ?? [])].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
-
-  const selectedModelVersion = sortedModelVersions.find((v) => v.id === selectedModelVersionId) ?? null;
   const selectedEvaluation: ModelEvaluationOut | null =
     evaluationsQuery.data?.find((e) => e.split === "TEST") ?? evaluationsQuery.data?.[0] ?? null;
 
-  const tabs = selectedModelVersion ? tabsForModel(selectedModelVersion.name) : [];
+  const baseTabs = selectedModelVersion ? tabsForModel(selectedModelVersion.name) : [];
+  const tabs = driftTabAvailable(selectedModelVersion)
+    ? [...baseTabs, { key: "drift" as const, label: "Drift" }]
+    : baseTabs;
+
+  const driftErrorMessage =
+    driftQuery.error instanceof ApiError && driftQuery.error.status === 409
+      ? "This model version is no longer in production, so drift is not defined for it anymore."
+      : driftQuery.error instanceof Error
+        ? driftQuery.error.message
+        : undefined;
 
   return (
     <Container sx={{ py: 4 }}>
@@ -434,6 +468,14 @@ export function ModelTrainingPage() {
                                   ? (selectedEvaluation.metrics as unknown as Cnn3dMetrics)
                                   : undefined
                               }
+                            />
+                          )}
+                          {activeTab === "drift" && (
+                            <DriftTab
+                              isLoading={driftQuery.isLoading}
+                              isError={driftQuery.isError}
+                              errorMessage={driftErrorMessage}
+                              report={driftQuery.data}
                             />
                           )}
                         </Box>

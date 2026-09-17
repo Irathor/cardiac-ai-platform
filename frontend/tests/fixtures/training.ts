@@ -3,6 +3,7 @@ import type {
   ClassificationValidationReport,
   Cnn3dMetrics,
   DispersionSummary,
+  ModelDriftReport,
   ModelEvaluationOut,
   ModelVersionOut,
   NearestCentroidMetrics,
@@ -256,6 +257,31 @@ export function makeModelVersion(overrides: Partial<ModelVersionOut> = {}): Mode
     ...overrides,
   };
 }
+
+export const modelDriftReport: ModelDriftReport = {
+  model_version_id: "model-version-1",
+  evaluated_at: "2026-01-05T10:00:00Z",
+  biomarkers: [
+    {
+      biomarker_name: "LVEF",
+      ks_statistic: 0.32,
+      p_value: 0.01,
+      base_sample_size: 120,
+      recent_sample_size: 40,
+      drift_detected: true,
+      skipped_reason: null,
+    },
+  ],
+  biomarkers_skipped_reason: null,
+  prediction: {
+    psi: 0.05,
+    base_sample_size: 120,
+    recent_sample_size: 40,
+    severity: "NONE",
+    drift_detected: false,
+    skipped_reason: null,
+  },
+};
 
 export function makeEvaluation(metrics: Record<string, unknown>, overrides: Partial<ModelEvaluationOut> = {}): ModelEvaluationOut {
   return {

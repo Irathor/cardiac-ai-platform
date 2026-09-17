@@ -6,6 +6,7 @@ from app.api.v1 import (
     annotations,
     auth,
     datasets,
+    explainability,
     health,
     imaging,
     models,
@@ -27,3 +28,4 @@ api_router.include_router(annotations.router, tags=["annotations"])
 api_router.include_router(datasets.router, tags=["datasets"])
 api_router.include_router(training.router, tags=["training"])
 api_router.include_router(models.router, tags=["models"])
+api_router.include_router(explainability.router, tags=["explainability"])

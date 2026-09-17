@@ -7,10 +7,15 @@ import { tokens } from "../theme";
 const NAV_ITEMS: Array<{ to: string; label: string }> = [
   { to: "/", label: "Dashboard" },
   { to: "/viewer", label: "Viewer" },
+  // Engineering/governance items grouped together, deliberately next to each
+  // other and away from /viewer — the explainability showcase is a
+  // pedagogical artifact for engineers, never part of the clinical flow
+  // (see EPIC-15 "Contrato técnico" point 5).
   { to: "/admin/training", label: "Training" },
+  { to: "/explainability-showcase", label: "Explainability showcase" },
 ];
 
-/** Slim site-wide nav so /viewer and /admin/training are reachable without editing the URL. */
+/** Slim site-wide nav so /viewer, /admin/training, and /explainability-showcase are reachable without editing the URL. */
 export function SiteHeader() {
   const location = useLocation();
 

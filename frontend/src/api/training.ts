@@ -252,3 +252,43 @@ export function getModelVersion(id: string, token: string): Promise<ModelVersion
 export function listModelEvaluations(modelVersionId: string, token: string): Promise<ModelEvaluationOut[]> {
   return apiGetAuthed(`/model-versions/${modelVersionId}/evaluations`, token);
 }
+
+// --- Drift (EPIC-7 backend, EPIC-16 frontend) — only well-defined for a
+// ModelVersion currently in PRODUCTION; see getModelVersionDrift. ---
+
+export type DriftSeverity = "NONE" | "MODERATE" | "SIGNIFICANT";
+
+export interface BiomarkerDriftOut {
+  biomarker_name: string;
+  ks_statistic: number | null;
+  p_value: number | null;
+  base_sample_size: number;
+  recent_sample_size: number;
+  drift_detected: boolean;
+  skipped_reason: string | null;
+}
+
+export interface PredictionDriftOut {
+  psi: number | null;
+  base_sample_size: number;
+  recent_sample_size: number;
+  severity: DriftSeverity;
+  drift_detected: boolean;
+  skipped_reason: string | null;
+}
+
+export interface ModelDriftReport {
+  model_version_id: string;
+  evaluated_at: string;
+  biomarkers: BiomarkerDriftOut[];
+  biomarkers_skipped_reason: string | null;
+  prediction: PredictionDriftOut;
+}
+
+/** Only defined for a ModelVersion with status === "PRODUCTION" — the backend
+ * 409s otherwise (see app.api.v1.models.get_model_version_drift). Cached 300s
+ * server-side, so this is a point-in-time check, not a live monitor: callers
+ * should not poll it with refetchInterval. */
+export function getModelVersionDrift(modelVersionId: string, token: string): Promise<ModelDriftReport> {
+  return apiGetAuthed(`/model-versions/${modelVersionId}/drift`, token);
+}

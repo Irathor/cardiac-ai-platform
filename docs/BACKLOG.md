@@ -18,15 +18,11 @@ Este archivo distingue tres cosas que no son lo mismo (ver `~/.claude/CLAUDE.md`
   Migrar a OCI Vault (cloud-init lo consulta vía instance principal en vez de recibir el
   secreto ya embebido) sería más correcto si el contexto de confianza cambia (más operadores,
   compartment compartido, identidad de CI con acceso a metadata de instancias).
-- **Renderizar el mapa de Grad-CAM en la pantalla de informe del frontend** — EPIC-3 ya
-  expone el dato real y completo vía `GET /analyses/{analysis_id}/gradcam` (array `.npy`,
-  mismo RBAC que el resto del análisis); falta la parte visual (overlay/heatmap sobre la
-  imagen en `ImagingViewerPage`/donde corresponda). Motivo por el que no entró en EPIC-3: el
-  contrato técnico de Shepard decidió que el criterio "visible en el informe" queda
-  satisfecho por la exposición de datos vía API (mismo patrón que `features`/
-  `probabilities`, que tampoco se renderizan server-side), dejando el render explícitamente
-  para un fast-follow — no forma parte del alcance de esta Epic ni de EPIC-10 (rediseño
-  visual), que fue sobre el frontend ya existente, no sobre features nuevas.
+- **Renderizar el mapa de Grad-CAM en la pantalla de informe del frontend** — ahora es
+  [EPIC-14: Explicabilidad visual en el visor de imágenes (Grad-CAM overlay + consistencia de
+  biomarcadores CNN3D)](epics/EPIC-14-explicabilidad-visual-en-el-visor.md). Ya no vive como
+  fast-follow suelto aquí; el detalle completo (parseo de `.npy` en el cliente, panel
+  independiente de slices, tabla de consistencia de biomarcadores) está en esa Epic.
 - **Corrección automática/asistida de divergencias del Model Registry** — EPIC-4 solo
   implementó la detección de solo lectura (`GET /api/v1/model-versions/registry-divergence`,
   ver ADR-2/EPIC-4 "Contrato técnico"). Resolver una divergencia real detectada (decidir si
