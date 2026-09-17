@@ -14,10 +14,10 @@ os.environ.setdefault("MINIO_SECRET_KEY", "test-secret-key")
 # Real mlflow client, pointed at a local sqlite-backed store instead of a
 # server — no Docker/network needed, but app.services.training_service's
 # and app.services.model_service's mlflow calls (including
-# register_model/transition_model_version_stage, EPIC-4) are genuinely
+# register_model/set_registered_model_alias, EPIC-4/EPIC-11) are genuinely
 # exercised rather than mocked. Real server-backed tracking is verified
 # separately inside Docker Compose. A plain file store (mlflow's default)
-# does NOT support the Model Registry — register_model/transition_model_version_stage
+# does NOT support the Model Registry — register_model/set_registered_model_alias
 # require a database-backed store, hence sqlite here instead of file://.
 # as_posix() keeps the URI well-formed on Windows ("sqlite:///C:/...").
 os.environ.setdefault(

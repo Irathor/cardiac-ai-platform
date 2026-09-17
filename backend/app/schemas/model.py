@@ -50,6 +50,6 @@ class ModelPromoteRequest(BaseModel):
 class ModelRegistryDivergenceOut(BaseModel):
     model_version_id: uuid.UUID
     local_status: str
-    expected_stage: str | None
-    actual_stage: str | None
+    expected_alias: str | None
+    actual_alias: str | None
     fetch_error: str | None = None

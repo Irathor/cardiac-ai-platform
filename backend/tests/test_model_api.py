@@ -1,7 +1,7 @@
 """Model governance: review (approve/reject, mandatory justification),
 promote to production, and rollback — see docs/permissions.md.
 
-The EPIC-4 tests below (MLflow Registry stage sync) mock
+The EPIC-4/EPIC-11 tests below (MLflow Registry alias sync, ADR-4) mock
 app.services.model_service.MlflowClient directly — unlike
 test_training_api.py, which exercises the real (sqlite-backed) mlflow
 client — because the behaviour under test here is specifically "did we call
@@ -127,76 +127,87 @@ def test_non_model_approver_cannot_review_or_promote(client, db_session, demo_or
     assert response.status_code == 403
 
 
-# --- EPIC-4: MLflow Registry stage sync on review()/promote(), and the
-# manual registry-divergence reconciliation endpoint. ---
+# --- EPIC-4/EPIC-11 (ADR-4): MLflow Registry alias sync on promote()
+# only — review() no longer talks to MLflow — and the manual
+# registry-divergence reconciliation endpoint. ---
 
 
 class _FakeMlflowClient:
-    """Records every transition_model_version_stage call instead of hitting
-    MLflow — used to assert the exact mapping/arguments EPIC-4 specifies."""
+    """Records every set_registered_model_alias/delete_registered_model_alias
+    call instead of hitting MLflow — used to assert the exact
+    mapping/arguments ADR-4 specifies."""
 
     calls: list[dict] = []
 
     def __init__(self) -> None:
         pass
 
-    def transition_model_version_stage(self, *, name, version, stage, archive_existing_versions):
-        self.__class__.calls.append(
-            {"name": name, "version": version, "stage": stage, "archive_existing_versions": archive_existing_versions}
-        )
+    def set_registered_model_alias(self, *, name, alias, version):
+        self.__class__.calls.append({"method": "set_alias", "name": name, "alias": alias, "version": version})
+
+    def delete_registered_model_alias(self, *, name, alias):
+        self.__class__.calls.append({"method": "delete_alias", "name": name, "alias": alias})
 
 
 class _FailingMlflowClient:
-    def transition_model_version_stage(self, **kwargs):
+    def set_registered_model_alias(self, **kwargs):
+        raise RuntimeError("mlflow registry unreachable")
+
+    def delete_registered_model_alias(self, **kwargs):
         raise RuntimeError("mlflow registry unreachable")
 
     def get_model_version(self, name, version):
         raise RuntimeError("mlflow registry unreachable")
 
 
-def test_review_approve_transitions_mlflow_stage_to_staging(client, db_session, demo_org, monkeypatch):
+def test_review_never_calls_mlflow(client, db_session, demo_org, monkeypatch):
+    """ADR-4: with the alias mapping, PENDING_REVIEW -> APPROVED/REJECTED is
+    always None -> None, so review() no longer syncs anything with MLflow
+    (unlike the old stage mapping, where approve/reject transitioned to
+    Staging/Archived). Covers both branches against the same fake client."""
     make_user(db_session, demo_org, email="approver-reg1@cardiacai-test.dev", role="MODEL_APPROVER")
-    model_version = make_model_version(db_session)
+    approved_version = make_model_version(db_session)
+    rejected_version = make_model_version(db_session)
     token = _login(client, "approver-reg1@cardiacai-test.dev")
 
     monkeypatch.setattr(_FakeMlflowClient, "calls", [])
     monkeypatch.setattr(model_service, "MlflowClient", _FakeMlflowClient)
+
+    approve_response = client.post(
+        f"/api/v1/model-versions/{approved_version.id}/review",
+        headers=_auth(token), json={"approve": True, "justification": "Meets the accuracy bar"},
+    )
+    reject_response = client.post(
+        f"/api/v1/model-versions/{rejected_version.id}/review",
+        headers=_auth(token), json={"approve": False, "justification": "Accuracy too low"},
+    )
+    assert approve_response.status_code == 200
+    assert reject_response.status_code == 200
+    assert _FakeMlflowClient.calls == []
+
+
+def test_review_succeeds_even_if_mlflow_is_unreachable(client, db_session, demo_org, monkeypatch):
+    """Direct consequence of ADR-4's decoupling: since review() never talks
+    to MLflow, an unreachable MLflow no longer blocks an approval/rejection
+    the way it did under the old stage mapping (see the now-removed
+    test_review_returns_502_and_does_not_persist_status_when_mlflow_fails)."""
+    make_user(db_session, demo_org, email="approver-reg1b@cardiacai-test.dev", role="MODEL_APPROVER")
+    model_version = make_model_version(db_session)
+    token = _login(client, "approver-reg1b@cardiacai-test.dev")
+
+    monkeypatch.setattr(model_service, "MlflowClient", _FailingMlflowClient)
 
     response = client.post(
         f"/api/v1/model-versions/{model_version.id}/review",
         headers=_auth(token), json={"approve": True, "justification": "Meets the accuracy bar"},
     )
     assert response.status_code == 200
-    assert _FakeMlflowClient.calls == [
-        {
-            "name": model_version.mlflow_registry_name, "version": model_version.mlflow_registry_version,
-            "stage": "Staging", "archive_existing_versions": False,
-        }
-    ]
+    assert response.json()["status"] == "APPROVED"
 
 
-def test_review_reject_transitions_mlflow_stage_to_archived(client, db_session, demo_org, monkeypatch):
-    make_user(db_session, demo_org, email="approver-reg2@cardiacai-test.dev", role="MODEL_APPROVER")
-    model_version = make_model_version(db_session)
-    token = _login(client, "approver-reg2@cardiacai-test.dev")
-
-    monkeypatch.setattr(_FakeMlflowClient, "calls", [])
-    monkeypatch.setattr(model_service, "MlflowClient", _FakeMlflowClient)
-
-    response = client.post(
-        f"/api/v1/model-versions/{model_version.id}/review",
-        headers=_auth(token), json={"approve": False, "justification": "Accuracy too low"},
-    )
-    assert response.status_code == 200
-    assert _FakeMlflowClient.calls == [
-        {
-            "name": model_version.mlflow_registry_name, "version": model_version.mlflow_registry_version,
-            "stage": "Archived", "archive_existing_versions": False,
-        }
-    ]
-
-
-def test_promote_transitions_new_and_demoted_versions_in_mlflow(client, db_session, demo_org, monkeypatch):
+def test_promote_syncs_production_alias_for_new_and_demoted_versions_in_mlflow(
+    client, db_session, demo_org, monkeypatch
+):
     make_user(db_session, demo_org, email="approver-reg3@cardiacai-test.dev", role="MODEL_APPROVER")
     token = _login(client, "approver-reg3@cardiacai-test.dev")
 
@@ -213,43 +224,45 @@ def test_promote_transitions_new_and_demoted_versions_in_mlflow(client, db_sessi
         f"/api/v1/model-versions/{second.id}/promote", headers=_auth(token), json={"justification": "Better model"},
     )
     assert response.status_code == 200
+    # `first` loses the "production" alias before `second` gains it — this
+    # order isn't arbitrary: delete_registered_model_alias isn't scoped by
+    # version, so deleting after the reassignment would strip the alias
+    # from `second` (the version it was *just* moved to) instead of doing
+    # nothing useful to `first` — see promote()'s docstring.
     assert _FakeMlflowClient.calls == [
-        {
-            "name": second.mlflow_registry_name, "version": second.mlflow_registry_version,
-            "stage": "Production", "archive_existing_versions": False,
-        },
-        {
-            "name": first.mlflow_registry_name, "version": first.mlflow_registry_version,
-            "stage": "Archived", "archive_existing_versions": False,
-        },
+        {"method": "delete_alias", "name": first.mlflow_registry_name, "alias": "production"},
+        {"method": "set_alias", "name": second.mlflow_registry_name, "alias": "production", "version": second.mlflow_registry_version},
     ]
 
 
 class _PartiallyFailingMlflowClient:
-    """Succeeds on the first transition_model_version_stage call (the
-    promoted version -> Production) and fails on every call after that
-    (the demoted version -> Archived, and the best-effort revert of the
-    first transition) — used to verify promote()'s partial-failure
-    handling without leaving MLflow showing two "Production" versions."""
+    """Succeeds on the first alias-sync call (demoting the previous
+    production version) and fails on every call after that (assigning
+    "production" to the newly promoted version, and the best-effort revert
+    of the first call) — used to verify promote()'s partial-failure
+    handling without leaving MLflow with no version aliased "production" at
+    all while the local status rolls back."""
 
     calls: list[dict] = []
 
-    def transition_model_version_stage(self, *, name, version, stage, archive_existing_versions):
-        self.__class__.calls.append(
-            {"name": name, "version": version, "stage": stage, "archive_existing_versions": archive_existing_versions}
-        )
-        if len(self.__class__.calls) > 1:
-            raise RuntimeError("mlflow registry unreachable")
+    def set_registered_model_alias(self, *, name, alias, version):
+        self.__class__.calls.append({"method": "set_alias", "name": name, "alias": alias, "version": version})
+        raise RuntimeError("mlflow registry unreachable")
+
+    def delete_registered_model_alias(self, *, name, alias):
+        self.__class__.calls.append({"method": "delete_alias", "name": name, "alias": alias})
 
 
-def test_promote_reverts_the_first_mlflow_transition_when_the_second_fails(
+def test_promote_reverts_the_first_mlflow_alias_sync_when_the_second_fails(
     client, db_session, demo_org, monkeypatch
 ):
-    """Regression test for EPIC-4's security-review finding: if demoting the
-    previous production version in MLflow fails after the new version was
-    already transitioned to Production there, promote() must best-effort
-    revert that first transition — otherwise MLflow keeps showing the new
-    version as Production while the local status rolls back, a divergence
+    """Regression test for EPIC-4's security-review finding, adapted to the
+    alias mechanism (EPIC-11/ADR-4): if assigning "production" to the newly
+    promoted version fails in MLflow after the previous production version
+    was already demoted (alias deleted) there, promote() must best-effort
+    revert that first sync — otherwise MLflow ends up with no version
+    aliased "production" for this model name while the local status rolls
+    back to the previous version still being PRODUCTION, a divergence
     created by this very call instead of by real drift."""
     make_user(db_session, demo_org, email="approver-reg6@cardiacai-test.dev", role="MODEL_APPROVER")
     token = _login(client, "approver-reg6@cardiacai-test.dev")
@@ -270,30 +283,13 @@ def test_promote_reverts_the_first_mlflow_transition_when_the_second_fails(
 
     unchanged = client.get(f"/api/v1/model-versions/{second.id}", headers=_auth(token))
     assert unchanged.json()["status"] == "APPROVED"
-    # 3 calls: promote `second` to Production (succeeds), demote `first` to
-    # Archived (fails), then the best-effort revert of `second` back to its
-    # previous stage (also fails, but is still attempted).
+    # 3 calls: delete "production" from `first` (succeeds), set "production"
+    # on `second` (fails), then the best-effort revert — re-setting
+    # "production" back on `first` (also fails, but is still attempted).
+    assert [c["method"] for c in _PartiallyFailingMlflowClient.calls] == ["delete_alias", "set_alias", "set_alias"]
     assert [c["name"] for c in _PartiallyFailingMlflowClient.calls] == [
-        second.mlflow_registry_name, first.mlflow_registry_name, second.mlflow_registry_name,
+        first.mlflow_registry_name, second.mlflow_registry_name, first.mlflow_registry_name,
     ]
-    assert [c["stage"] for c in _PartiallyFailingMlflowClient.calls] == ["Production", "Archived", "Staging"]
-
-
-def test_review_returns_502_and_does_not_persist_status_when_mlflow_fails(client, db_session, demo_org, monkeypatch):
-    make_user(db_session, demo_org, email="approver-reg4@cardiacai-test.dev", role="MODEL_APPROVER")
-    model_version = make_model_version(db_session)
-    token = _login(client, "approver-reg4@cardiacai-test.dev")
-
-    monkeypatch.setattr(model_service, "MlflowClient", _FailingMlflowClient)
-
-    response = client.post(
-        f"/api/v1/model-versions/{model_version.id}/review",
-        headers=_auth(token), json={"approve": True, "justification": "Meets the accuracy bar"},
-    )
-    assert response.status_code == 502
-
-    unchanged = client.get(f"/api/v1/model-versions/{model_version.id}", headers=_auth(token))
-    assert unchanged.json()["status"] == "PENDING_REVIEW"
 
 
 def test_promote_returns_502_and_does_not_persist_status_when_mlflow_fails(client, db_session, demo_org, monkeypatch):
@@ -322,7 +318,7 @@ def test_registry_divergence_endpoint_reports_an_unreachable_version_without_fai
     `fetch_error` entry, not a 502 that hides every other real divergence
     behind one bad reference."""
     make_user(db_session, demo_org, email="approver-div3@cardiacai-test.dev", role="MODEL_APPROVER")
-    model_version = make_model_version(db_session, status="APPROVED")
+    model_version = make_model_version(db_session, status="APPROVED")  # expects no alias (ADR-4)
 
     class _UnreachableClient:
         def get_model_version(self, name, version):
@@ -337,18 +333,20 @@ def test_registry_divergence_endpoint_reports_an_unreachable_version_without_fai
     assert body == [
         {
             "model_version_id": str(model_version.id), "local_status": "APPROVED",
-            "expected_stage": "Staging", "actual_stage": None,
+            "expected_alias": None, "actual_alias": None,
             "fetch_error": "RuntimeError: Registered model version not found",
         }
     ]
 
 
 def test_registry_divergence_endpoint_detects_a_mismatch(client, db_session, demo_org, monkeypatch):
+    """APPROVED expects no alias (ADR-4); a version showing "production"
+    anyway is contamination, not a legitimate alias for that status."""
     make_user(db_session, demo_org, email="approver-div1@cardiacai-test.dev", role="MODEL_APPROVER")
-    model_version = make_model_version(db_session, status="APPROVED")  # expects Staging in MLflow
+    model_version = make_model_version(db_session, status="APPROVED")
 
     class _MismatchedVersion:
-        current_stage = "Production"
+        aliases = ["production"]
 
     class _MismatchClient:
         def get_model_version(self, name, version):
@@ -363,7 +361,35 @@ def test_registry_divergence_endpoint_detects_a_mismatch(client, db_session, dem
     assert body == [
         {
             "model_version_id": str(model_version.id), "local_status": "APPROVED",
-            "expected_stage": "Staging", "actual_stage": "Production", "fetch_error": None,
+            "expected_alias": None, "actual_alias": "production", "fetch_error": None,
+        }
+    ]
+
+
+def test_registry_divergence_endpoint_detects_a_missing_production_alias(client, db_session, demo_org, monkeypatch):
+    """The inverse of the mismatch case above: PRODUCTION expects
+    "production" (ADR-4's only real alias); a version missing it is a
+    divergence too, not just an unexpected extra alias."""
+    make_user(db_session, demo_org, email="approver-div4@cardiacai-test.dev", role="MODEL_APPROVER")
+    model_version = make_model_version(db_session, status="PRODUCTION")
+
+    class _NoAliasVersion:
+        aliases = []
+
+    class _NoAliasClient:
+        def get_model_version(self, name, version):
+            return _NoAliasVersion()
+
+    monkeypatch.setattr(model_service, "MlflowClient", _NoAliasClient)
+    token = _login(client, "approver-div4@cardiacai-test.dev")
+
+    response = client.get("/api/v1/model-versions/registry-divergence", headers=_auth(token))
+    assert response.status_code == 200
+    body = response.json()
+    assert body == [
+        {
+            "model_version_id": str(model_version.id), "local_status": "PRODUCTION",
+            "expected_alias": "production", "actual_alias": None, "fetch_error": None,
         }
     ]
 

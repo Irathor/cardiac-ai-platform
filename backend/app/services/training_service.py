@@ -166,7 +166,7 @@ def execute_training(db: Session, *, training_run_id: uuid.UUID) -> None:
             mlflow_run_id = mlflow_run.info.run_id
             mlflow_model_uri = f"{mlflow_run.info.artifact_uri}/prototypes.json"
 
-        # MLflow Model Registry is the source of truth for the artifact/stage
+        # MLflow Model Registry is the source of truth for the artifact
         # (ADR-2, EPIC-4 point 1) — registered here, before the ModelVersion
         # row exists, so it's impossible for a row to exist without a
         # Registry counterpart. runs:/<run_id>/<artifact_path>, not

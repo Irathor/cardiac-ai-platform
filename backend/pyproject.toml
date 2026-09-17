@@ -31,10 +31,9 @@ dependencies = [
     "boto3>=1.35,<2",
     "nibabel>=5.3,<6",
     # Bumped from the 2.x line to 3.16.1 to resolve the 70-CVE pip-audit
-    # finding across mlflow/starlette/pyarrow (EPIC-5). mlflow 3.x still
-    # exposes MlflowClient.transition_model_version_stage (deprecated, not
-    # removed) used by app.services.model_service — see docs/BACKLOG.md for
-    # the fast-follow to migrate to registered-model aliases.
+    # finding across mlflow/starlette/pyarrow (EPIC-5). app.services.model_service
+    # uses MlflowClient.set_registered_model_alias/delete_registered_model_alias
+    # (EPIC-11/ADR-4), not the deprecated transition_model_version_stage API.
     "mlflow>=3.16.1,<4",
     "cardiac-ai-ml",
     # Talks to ml/scripts/training_runner_service.py (see docs/dl-training-runner.md) from
