@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import app.models  # noqa: F401  (registers every model on Base.metadata)
+from app.api import metrics
 from app.api.v1 import api_router
 from app.core.config import get_settings
 
@@ -29,3 +30,4 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+app.include_router(metrics.router)

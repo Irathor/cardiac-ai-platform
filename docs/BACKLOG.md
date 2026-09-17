@@ -37,9 +37,6 @@ Estas Epics ya están redactadas como ficheros (roadmap completo, propuesto por 
 pero no pueden empezar a implementarse hasta que el usuario tome una decisión concreta que
 todavía no se ha pedido. No se fuerza su implementación por rellenar el hueco.
 
-- [EPIC-6: Monitoring básico y métricas de inferencia servida](epics/EPIC-6-monitoring-basico.md)
-  — requiere decidir el stack de monitoring (endpoint `/metrics` propio vs.
-  Prometheus+Grafana).
 - [EPIC-7: Detección de drift sobre biomarcadores/predicciones](epics/EPIC-7-deteccion-drift.md)
   — requiere decidir el mecanismo de drift (librería tipo Evidently vs. estadístico propio).
 - [EPIC-8: Deployment cloud](epics/EPIC-8-deployment-cloud.md) — requiere decidir el

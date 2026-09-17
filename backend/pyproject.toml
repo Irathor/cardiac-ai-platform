@@ -40,6 +40,11 @@ dependencies = [
     # app.services.training_service.execute_dl_training — a real runtime dependency now, not
     # just the TestClient's transport (which is why it moved out of the dev extra below).
     "httpx>=0.27,<0.28",
+    # EPIC-6: instruments the two real-time inference paths
+    # (app.services.dl_inference_client) and exposes GET /metrics for
+    # Prometheus to scrape. 0.26.0 verified as the latest release on PyPI
+    # at the time this dependency was added.
+    "prometheus_client>=0.26,<0.27",
 ]
 
 [project.optional-dependencies]

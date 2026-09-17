@@ -53,6 +53,19 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY}
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY}
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      # mlflow>=3's server rejects any Host header outside its own
+      # localhost/private-IP allowlist by default (DNS-rebinding
+      # protection) — a Docker Compose service-name hostname like
+      # "mlflow:5000" (what every real caller, backend/worker, sends)
+      # isn't a localhost or IP literal, so it's rejected with 403
+      # "Invalid Host header" otherwise. Found post-EPIC-5 (the mlflow
+      # 3.16.1 upgrade) via EPIC-6's full docker-compose e2e checkpoint —
+      # no prior verification exercised the real compose network path.
+      # Allowlist only the one real hostname this server is ever reached
+      # at from inside this stack (127.0.0.1:5000 stays open to the host
+      # for local debugging via the healthcheck/manual curl, already
+      # covered by the default localhost allowlist).
+      MLFLOW_SERVER_ALLOWED_HOSTS: mlflow:5000
     ports:
       - "127.0.0.1:5000:5000"
     depends_on:
@@ -78,6 +91,11 @@ services:
       REDIS_HOST: redis
       MINIO_ENDPOINT: minio:9000
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      # EPIC-6: shared with `worker` (same path, same volume) so
+      # prometheus_client's multiprocess mode can merge CNN3D metrics
+      # recorded in the worker process into this process's /metrics
+      # response — see backend/app/core/metrics.py.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -92,6 +110,7 @@ services:
       - ./backend/tests:/srv/tests
       - ./ml/cardiac_ai_ml:/ml/cardiac_ai_ml
       - ./data:/data
+      - prometheus_multiproc:/tmp/prometheus_multiproc
 
   worker:
     build:
@@ -104,6 +123,9 @@ services:
       REDIS_HOST: redis
       MINIO_ENDPOINT: minio:9000
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      # EPIC-6: same path/volume as `backend` — see that service's own
+      # comment on PROMETHEUS_MULTIPROC_DIR.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prometheus_multiproc
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +139,7 @@ services:
       - ./backend/app:/srv/app
       - ./ml/cardiac_ai_ml:/ml/cardiac_ai_ml
       - ./data:/data
+      - prometheus_multiproc:/tmp/prometheus_multiproc
     healthcheck:
       # Overrides the backend image's HTTP-based HEALTHCHECK (see backend/Dockerfile) —
       # this container runs a Celery worker, not the web server, so there's nothing on :8000.
@@ -135,6 +158,41 @@ services:
     depends_on:
       - backend
 
+  prometheus:
+    image: prom/prometheus:v3.13.3
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    environment:
+      # Required, no factory-default fallback — same convention as
+      # POSTGRES_PASSWORD/MINIO_SECRET_KEY above. Found by security-review
+      # at EPIC-6's close checkpoint: every other credentialed service in
+      # this compose file fails fast without its own secret; Grafana was
+      # the one left on the well-known admin/admin default.
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+    volumes:
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
   minio_data:
+  prometheus_data:
+  grafana_data:
+  # EPIC-6: shared between `backend` and `worker` for
+  # prometheus_client's multiprocess mode (PROMETHEUS_MULTIPROC_DIR) —
+  # see backend/app/core/metrics.py.
+  prometheus_multiproc:

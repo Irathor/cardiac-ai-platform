@@ -36,6 +36,7 @@ import httpx
 import numpy as np
 
 from app.core.config import get_settings
+from app.core.metrics import observe_inference
 
 # Generous but finite — covers a cold model-load (first inference call after
 # the runner starts) plus one real forward pass; a live analysis/
@@ -113,7 +114,8 @@ def classify_cnn3d(*, ed_bytes: bytes, es_bytes: bytes) -> dict:
     ed_abs, ed_rel = _stage_bytes_for_runner(settings.data_root, ed_bytes)
     es_abs, es_rel = _stage_bytes_for_runner(settings.data_root, es_bytes)
     try:
-        body = _post("/inference/classify", {"ed_relative_path": ed_rel, "es_relative_path": es_rel})
+        with observe_inference("cnn3d"):
+            body = _post("/inference/classify", {"ed_relative_path": ed_rel, "es_relative_path": es_rel})
     finally:
         _cleanup_staged_file(ed_abs)
         _cleanup_staged_file(es_abs)
@@ -146,7 +148,8 @@ def segment_unet(*, image_bytes: bytes) -> tuple[np.ndarray, float, float, float
     settings = get_settings()
     image_abs, image_rel = _stage_bytes_for_runner(settings.data_root, image_bytes)
     try:
-        body = _post("/inference/segment", {"image_relative_path": image_rel})
+        with observe_inference("unet"):
+            body = _post("/inference/segment", {"image_relative_path": image_rel})
     finally:
         _cleanup_staged_file(image_abs)
 

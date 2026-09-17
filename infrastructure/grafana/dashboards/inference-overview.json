@@ -1,0 +1,97 @@
+{
+  "id": null,
+  "uid": "dl-inference-overview",
+  "title": "DL Inference Overview",
+  "description": "Latency, volume and success/failure rate of inference served by dl_inference_client (CNN3D classification and U-Net auto-segmentation) via the GPU runner.",
+  "tags": ["cardiac-ai", "inference", "monitoring"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Inference latency (p50 / p95) by model type",
+      "description": "Duration of the HTTP call to the GPU runner (dl_inference_duration_seconds), per model_type.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(dl_inference_duration_seconds_bucket[5m])) by (le, model_type))",
+          "legendFormat": "p50 - {{model_type}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(dl_inference_duration_seconds_bucket[5m])) by (le, model_type))",
+          "legendFormat": "p95 - {{model_type}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Inference volume by model type",
+      "description": "Rate of served inferences (dl_inference_requests_total), per model_type, regardless of outcome.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(dl_inference_requests_total[5m])) by (model_type)",
+          "legendFormat": "{{model_type}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Inference success/failure rate by model type",
+      "description": "Rate of served inferences (dl_inference_requests_total), per model_type and outcome (success/failure).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*failure.*" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(dl_inference_requests_total[5m])) by (model_type, outcome)",
+          "legendFormat": "{{model_type}} - {{outcome}}"
+        }
+      ]
+    }
+  ]
+}
