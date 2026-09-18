@@ -80,13 +80,13 @@ body.custom-cursor-active * {
     filter: drop-shadow(0 0 0 rgba(123, 249, 215, 0));
   }
   8% {
-    filter: drop-shadow(0 0 8px rgba(123, 249, 215, 0.9));
+    filter: drop-shadow(0 0 3px rgba(123, 249, 215, 0.9));
   }
   16% {
     filter: drop-shadow(0 0 0 rgba(123, 249, 215, 0));
   }
   30% {
-    filter: drop-shadow(0 0 10px rgba(123, 249, 215, 0.9));
+    filter: drop-shadow(0 0 4px rgba(123, 249, 215, 0.9));
   }
 }
 

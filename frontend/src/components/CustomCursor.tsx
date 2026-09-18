@@ -6,8 +6,8 @@ import { tokens } from "../theme";
 // gets offset by this so the tip (not the element's bounding-box corner)
 // lands exactly under the pointer, matching how a native cursor's hotspot
 // works.
-const TIP_X = 1;
-const TIP_Y = 1;
+const TIP_X = 0.8;
+const TIP_Y = 0.8;
 
 /**
  * Replaces the native pointer with a normal arrow-shaped cursor, recolored
@@ -60,17 +60,17 @@ export function CustomCursor() {
     <svg
       ref={cursorRef}
       className="custom-cursor"
-      width="14"
-      height="16"
-      viewBox="0 0 14 16"
+      width="11"
+      height="13"
+      viewBox="0 0 11 13"
       aria-hidden="true"
       focusable="false"
     >
       <path
-        d="M1 1 L1 12 L4.5 9.3 L6.2 14 L7.8 13.4 L6.1 8.7 L12 8.7 Z"
+        d="M0.8 0.8 L0.8 9.6 L3.6 7.4 L5 11.2 L6.2 10.7 L4.9 7 L9.6 7 Z"
         fill={tokens.cyanDark}
         stroke={tokens.textPrimary}
-        strokeWidth="1"
+        strokeWidth="0.8"
         strokeLinejoin="round"
       />
     </svg>
