@@ -54,6 +54,16 @@ exista un mecanismo de drift real (EPIC-7) sobre el que definir el disparo autom
 
 ## Fuera de alcance
 
+- **Batería ampliada de métricas de validación (robustez sintética, OOD, latencia/throughput,
+  subgrupos finos)** — [EPIC-17: Selección de modelo al reentrenamiento + panel de validación
+  completo](epics/EPIC-17-seleccion-modelo-reentrenamiento-panel-validacion.md) implementa el
+  "conjunto mínimo obligatorio" de métricas que el propio usuario delimitó, no la lista completa
+  de 174 métricas que propuso junto a él. Motivo: el propio usuario acotó qué era obligatorio
+  para esta iteración; lo no implementado se documenta como tal en la UI, nunca se simula. Queda
+  explícitamente fuera: batería de robustez sintética (ruido/rotación/contraste/slices
+  faltantes/ficheros corruptos), detección OOD, análisis por subgrupo salvo lo trivialmente
+  disponible, métricas de latencia/throughput/hardware. Puede retomarse como iteración 2 si el
+  usuario confirma que quiere ampliar el conjunto de métricas.
 - **LIME sobre imágenes (CNN3D/U-Net) como complemento de Grad-CAM** — descartado en
   [ADR-3](adr/ADR-3-lime-panel-pedagogico.md). Motivo: Grad-CAM ya cubre la explicabilidad
   de imagen en esta fase del roadmap y no se ha identificado qué aportaría LIME sobre
