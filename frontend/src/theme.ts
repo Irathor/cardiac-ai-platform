@@ -74,14 +74,22 @@ export function quietSurface(): CSSObject {
   };
 }
 
-/** Hero tier — reserved for the single focal element on a screen. Raised surface + directional glow. */
+/**
+ * Hero tier — reserved for the single focal element on a screen. Raised
+ * surface + directional glow: a radial glow anchored at the top-right
+ * corner over the raised base color (same `radial-gradient(circle at 80%
+ * 0%, ...)` the approved "Bioluminescent Dark" moodboard used — reads as a
+ * diagonal light-to-dark gradient from bottom-left to top-right, not a
+ * flat fill), plus a real drop shadow so the card lifts off the page.
+ */
 export function heroSurface(accent: Accent = "cyan"): CSSObject {
   const c = accentColor[accent];
   return {
     backgroundColor: tokens.surfaceRaised,
+    backgroundImage: `radial-gradient(circle at 80% 0%, ${alpha(c, 0.16)}, transparent 55%)`,
     border: `1px solid ${alpha(c, 0.4)}`,
     borderRadius: "16px",
-    boxShadow: `0 0 0 1px ${alpha(c, 0.06)}, 0 24px 64px -28px ${alpha(c, 0.55)}`,
+    boxShadow: `0 0 0 1px ${alpha(c, 0.06)}, 0 24px 64px -28px ${alpha(c, 0.55)}, 0 12px 32px -16px rgba(0, 0, 0, 0.6)`,
   };
 }
 

@@ -123,5 +123,22 @@ como proceso de trabajo.
   training): paleta y tipografía coherentes. No se pudo capturar el visor con datos reales
   cargados (requiere backend + estudio real) — Miranda lo dejó explícito en vez de asumir.
 
+### Ajuste post-cierre (fidelidad al mood board aprobado)
+El usuario señaló, viendo capturas reales, que las tarjetas hero se veían con color plano y sin
+sombra, mientras que la opción "Bioluminescent Dark" del mood board de 3 opciones
+(`project/B-Bioluminescent.dc.html`) mostraba un glow radial anclado en la esquina superior
+derecha (`radial-gradient(circle at 80% 0%, ...)` sobre el fondo oscuro) que se lee como un
+degradado diagonal de abajo-izquierda a arriba-derecha. La implementación real de
+`heroSurface()` en `theme.ts` nunca incorporó ese `backgroundImage` — se quedó solo con
+`backgroundColor` plano + `box-shadow` — una desviación real frente a lo aprobado, no una
+reinterpretación deliberada (la Epic no reabre la elección de dirección de arte, ver "Fuera de
+alcance"; corrige la fidelidad de implementación a lo ya elegido). Corregido añadiendo el mismo
+`radial-gradient` a `heroSurface(accent)` (reescalado a la opacidad del acento del tier hero) y
+reforzando el `box-shadow` con una sombra de caída real además del glow direccional existente,
+para que la tarjeta se despegue visualmente de la página. Las tarjetas `quietSurface()` (p. ej.
+el dashboard) no cambian — el gradiente es exclusivo del tier hero, consistente con "un único
+hero por pantalla". Verificado: `npm run lint`/`build`/`vitest run` (40/40) en verde, capturas
+reales de `/admin/training` (hero) y `/` (dashboard, quiet, sin cambios) comparadas.
+
 ## Estado
 Completada
