@@ -58,7 +58,10 @@ def create_dataset(
 @router.get("/datasets")
 def list_datasets(
     db: Session = Depends(get_db),
-    engineer: User = Depends(require_roles(RoleName.ML_ENGINEER)),
+    # ADMIN can read (not create) datasets — needed to pick a dataset/version
+    # when retraining nearest-centroid from the admin training console (see
+    # docs/permissions.md, "Configure/start/... training runs" row and ADR-7).
+    engineer: User = Depends(require_roles(RoleName.ML_ENGINEER, RoleName.ADMIN)),
 ) -> list[DatasetOut]:
     return [DatasetOut.model_validate(d) for d in dataset_repository.list_datasets(db)]
 
@@ -67,7 +70,7 @@ def list_datasets(
 def get_dataset(
     dataset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    engineer: User = Depends(require_roles(RoleName.ML_ENGINEER)),
+    engineer: User = Depends(require_roles(RoleName.ML_ENGINEER, RoleName.ADMIN)),
 ) -> DatasetOut:
     return DatasetOut.model_validate(_load_dataset(db, dataset_id))
 
@@ -89,7 +92,7 @@ def create_dataset_version(
 def list_dataset_versions(
     dataset_id: uuid.UUID,
     db: Session = Depends(get_db),
-    engineer: User = Depends(require_roles(RoleName.ML_ENGINEER)),
+    engineer: User = Depends(require_roles(RoleName.ML_ENGINEER, RoleName.ADMIN)),
 ) -> list[DatasetVersionOut]:
     _load_dataset(db, dataset_id)
     return [DatasetVersionOut.model_validate(v) for v in dataset_repository.list_versions(db, dataset_id)]

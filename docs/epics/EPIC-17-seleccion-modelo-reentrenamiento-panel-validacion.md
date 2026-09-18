@@ -90,6 +90,24 @@ como "no implementado", nunca simulado con datos falsos) — ver entrada corresp
 - Refactor/optimización más allá del código que esta Epic toca directamente (no es una
   reescritura del resto de la plataforma).
 
+### Ajuste post-cierre (bug real encontrado en verificación en vivo)
+Al verificar en vivo (levantar el runner + `docker compose up` + disparar un reentrenamiento
+real de U-Net desde `/admin/training` como `ADMIN`), apareció un bug real no cubierto por los
+tests existentes (que solo probaban `ML_ENGINEER`): `GET /api/v1/datasets` seguía siendo
+`ML_ENGINEER`-only, nunca se le añadió `ADMIN` como al resto de endpoints de esta Epic. El
+frontend usa ese listado para auto-rellenar `datasetId`/`versionId` — necesarios en la URL
+incluso para los tipos DL, solo como identificador de auditoría (ver "Contrato técnico" punto
+1) — así que el 403 dejaba el botón "Start training" permanentemente deshabilitado para
+`ADMIN`, para los tres tipos de modelo, no solo nearest-centroid. Corregido añadiendo `ADMIN`
+a los tres endpoints de solo lectura de `datasets.py` (`list_datasets`, `get_dataset`,
+`list_dataset_versions`) — no a los de creación (`create_dataset`, `create_dataset_version`),
+que siguen siendo `ML_ENGINEER`-only, tal como ya documentaba `docs/permissions.md` ("Configure/
+start/... training runs" ya listaba `ADMIN` ✅, este fix solo hace el código consistente con lo
+que ya estaba documentado). Verificado con `pytest tests/test_dataset_api.py tests/test_permissions.py
+tests/test_training_api.py` (28/28) y con el flujo real end-to-end: reentrenamiento de U-Net
+disparado de verdad desde la UI como `ADMIN`, GPU real confirmada (`device: cuda`, 85/15/50
+pacientes train/val/test reales de ACDC).
+
 ## Estado
 Completada
 
