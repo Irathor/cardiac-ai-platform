@@ -2,7 +2,7 @@ import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 import { AppBar, Box, Button, Stack, Toolbar, Typography } from "@mui/material";
 import { Link, useLocation } from "react-router-dom";
 
-import { tokens } from "../theme";
+import { quietSurface, tokens } from "../theme";
 
 const NAV_ITEMS: Array<{ to: string; label: string }> = [
   { to: "/", label: "Dashboard" },
@@ -53,8 +53,14 @@ export function SiteHeader() {
                 size="small"
                 aria-current={active ? "page" : undefined}
                 sx={{
+                  ...quietSurface(),
+                  // Nav items are the same "container box" language as every
+                  // other card on the site (gradient + hover glow) — only
+                  // the active one keeps its own filled background; inactive
+                  // ones stay transparent until hovered.
+                  backgroundColor: active ? undefined : "transparent",
+                  backgroundImage: active ? quietSurface().backgroundImage : "none",
                   color: active ? "primary.main" : "text.secondary",
-                  backgroundColor: active ? "action.selected" : "transparent",
                 }}
               >
                 {item.label}
