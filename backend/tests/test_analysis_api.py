@@ -591,6 +591,45 @@ def test_generate_explanation_calls_ollama_for_real_and_caches_it(client, db_ses
     assert result["llm_explanation_error"] is None
 
 
+def test_generate_explanation_switches_language_without_force(client, db_session, demo_org, monkeypatch):
+    """EPIC-18 follow-up: the UI's language toggle should invalidate the
+    cache the same way force=true does — a clinician switching from English
+    to Spanish must never see a stale-language cached explanation reused."""
+    _doctor, study = _setup_study_with_ed_es(db_session, demo_org, suffix="llmlang", es_lv_volume=50.0)
+    token = _login(client, "doc-allmlang@cardiacai-test.dev")
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    seen_systems = []
+
+    def fake_post(url, json=None, timeout=None):
+        seen_systems.append(json["system"])
+        text = "In English." if "in English" in json["system"] else "En español."
+        return _FakeOllamaResponse({"response": text, "done": True})
+
+    monkeypatch.setattr(llm_explanation_service.httpx, "post", fake_post)
+
+    en_response = client.post(f"/api/v1/analyses/{analysis_id}/explanation?language=en", headers=_auth(token))
+    assert en_response.json()["explanation"] == "In English."
+
+    es_response = client.post(f"/api/v1/analyses/{analysis_id}/explanation?language=es", headers=_auth(token))
+    assert es_response.json()["explanation"] == "En español."
+    assert len(seen_systems) == 2  # switching language triggered a real second call, not a cache hit
+
+    # Switching back to English without force must not need a third real
+    # call — it's cached again... except the cache only holds the *last*
+    # language, so this is a genuine regeneration too (documented tradeoff:
+    # one slot, not one per language).
+    en_again = client.post(f"/api/v1/analyses/{analysis_id}/explanation?language=en", headers=_auth(token))
+    assert en_again.json()["explanation"] == "In English."
+    assert len(seen_systems) == 3
+
+    # Repeating the same language again *is* a real cache hit.
+    en_cached = client.post(f"/api/v1/analyses/{analysis_id}/explanation?language=en", headers=_auth(token))
+    assert en_cached.json()["explanation"] == "In English."
+    assert len(seen_systems) == 3
+
+
 def test_generate_explanation_force_regenerates(client, db_session, demo_org, monkeypatch):
     _doctor, study = _setup_study_with_ed_es(db_session, demo_org, suffix="llm2", es_lv_volume=50.0)
     token = _login(client, "doc-allm2@cardiacai-test.dev")

@@ -11,6 +11,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
+import { useTranslation } from "react-i18next";
 
 import type { BiomarkerConsistency } from "../api/analysis";
 
@@ -19,13 +20,6 @@ export interface BiomarkerConsistencyPanelProps {
   error: string | null;
 }
 
-// Reference text fixed in EPIC-12 — kept verbatim so the caveat reads the
-// same wherever this signal is shown.
-const CONSISTENCY_NOTE =
-  "Señal de consistencia indirecta entre los biomarcadores derivados por auto-segmentación " +
-  "U-Net y los prototipos de la clase predicha por CNN3D — no es una atribución exacta del " +
-  "modelo, es una comparación posterior con un clasificador distinto (nearest-centroid).";
-
 /**
  * Table for EPIC-12's biomarker-consistency signal — same visual pattern as
  * `ClassificationTab`'s tables (plain MUI `Table`, no new styling). Mounted
@@ -33,12 +27,13 @@ const CONSISTENCY_NOTE =
  * it's the same unit of information, not a separate hero surface.
  */
 export function BiomarkerConsistencyPanel({ consistency, error }: BiomarkerConsistencyPanelProps) {
+  const { t } = useTranslation();
   if (!consistency && !error) return null;
 
   return (
     <Box sx={{ mt: 2 }}>
       <Typography variant="subtitle2" gutterBottom>
-        Biomarker consistency
+        {t("biomarkerConsistency.title")}
       </Typography>
 
       {error && <Alert severity="warning">{error}</Alert>}
@@ -46,21 +41,23 @@ export function BiomarkerConsistencyPanel({ consistency, error }: BiomarkerConsi
       {consistency && (
         <Stack spacing={1.5}>
           <Typography variant="caption" color="text.secondary">
-            {CONSISTENCY_NOTE}
+            {t("biomarkerConsistency.note")}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Reference: {consistency.reference_source}
+            {t("biomarkerConsistency.reference", { source: consistency.reference_source })}
           </Typography>
 
           <TableContainer>
             <Table size="small" aria-label="Biomarker consistency per feature">
               <TableHead>
                 <TableRow>
-                  <TableCell>Feature</TableCell>
-                  <TableCell align="right">Derived value</TableCell>
-                  <TableCell align="right">Expected for {consistency.predicted_class}</TableCell>
-                  <TableCell align="right">Scaled deviation</TableCell>
-                  <TableCell align="center">Consistent</TableCell>
+                  <TableCell>{t("biomarkerConsistency.feature")}</TableCell>
+                  <TableCell align="right">{t("biomarkerConsistency.derivedValue")}</TableCell>
+                  <TableCell align="right">
+                    {t("biomarkerConsistency.expectedFor", { predictedClass: consistency.predicted_class })}
+                  </TableCell>
+                  <TableCell align="right">{t("biomarkerConsistency.scaledDeviation")}</TableCell>
+                  <TableCell align="center">{t("biomarkerConsistency.consistentColumn")}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -73,7 +70,7 @@ export function BiomarkerConsistencyPanel({ consistency, error }: BiomarkerConsi
                     <TableCell align="center">
                       {/* Not red: a deviation is a signal, not proof the model is wrong. */}
                       <Chip
-                        label={row.consistent ? "Consistent" : "Deviates"}
+                        label={row.consistent ? t("biomarkerConsistency.consistent") : t("biomarkerConsistency.deviates")}
                         size="small"
                         color={row.consistent ? "success" : "warning"}
                       />

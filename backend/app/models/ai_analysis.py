@@ -84,6 +84,11 @@ class AIAnalysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # Ollama not running) never fails the AIAnalysis itself.
     llm_explanation: Mapped[str | None] = mapped_column(Text())
     llm_explanation_error: Mapped[str | None] = mapped_column(String(2000))
+    # Which language `llm_explanation` was written in ("en"/"es") — lets the
+    # API tell a stale-language cached explanation apart from a fresh one
+    # when the UI's language toggle changes (see
+    # app.services.llm_explanation_service.SUPPORTED_LANGUAGES).
+    llm_explanation_language: Mapped[str | None] = mapped_column(String(10))
 
     requested_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

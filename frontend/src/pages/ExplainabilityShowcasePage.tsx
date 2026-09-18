@@ -18,6 +18,7 @@ import {
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ApiError } from "../api/client";
 import { login as loginRequest } from "../api/auth";
@@ -234,6 +235,7 @@ function ShowcaseContent({ data, token }: { data: ExplainabilityShowcase; token:
  * exists yet.
  */
 export function ExplainabilityShowcasePage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("admin@demo.cardiacai-test.dev");
   const [password, setPassword] = useState("Demo-Password-123!");
   const [token, setToken] = useState<string | null>(null);
@@ -261,10 +263,10 @@ export function ExplainabilityShowcasePage() {
   return (
     <Container sx={{ py: 4 }}>
       <Typography variant="h4" gutterBottom>
-        Explainability showcase
+        {t("pages.explainabilityShowcase.title")}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Grad-CAM maps and the LIME-vs-Shapley comparison panel generated offline by EPIC-1's showcase script.
+        {t("pages.explainabilityShowcase.subtitle")}
       </Typography>
 
       {/* Permanent, non-dismissible — must stay visible the whole time this
@@ -275,7 +277,7 @@ export function ExplainabilityShowcasePage() {
 
       {!token && (
         <LoginCard
-          title="Sign in to the explainability showcase"
+          title={t("pages.explainabilityShowcase.signInTitle")}
           email={email}
           password={password}
           error={loginError}

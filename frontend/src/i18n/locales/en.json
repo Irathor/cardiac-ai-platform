@@ -1,0 +1,85 @@
+{
+  "disclaimer": {
+    "text": "Research prototype only. Not validated for clinical diagnosis or treatment decisions."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "viewer": "Viewer",
+    "training": "Training",
+    "explainabilityShowcase": "Explainability showcase"
+  },
+  "login": {
+    "signInToContinue": "Sign in to continue.",
+    "email": "Email",
+    "password": "Password",
+    "logIn": "Log in"
+  },
+  "dashboard": {
+    "eyebrow": "Cardiac MRI Research Platform",
+    "title": "CardiacAI Research Platform",
+    "subtitle": "Automated Cardiac MRI Segmentation, Functional Biomarker Extraction and Explainable Disease Classification",
+    "backendLabel": "Backend:",
+    "backendChecking": "checking...",
+    "backendUnreachable": "unreachable",
+    "backendOnline": "online",
+    "imagingViewerTitle": "Imaging viewer",
+    "imagingViewerDescription": "Browse studies, inspect NIfTI series and segmentation overlays, and run AI-assisted classification on a study.",
+    "modelTrainingTitle": "Model training",
+    "modelTrainingDescription": "Launch retraining runs and review validation results: segmentation, classification and calibration metrics for every model version."
+  },
+  "gradcam": {
+    "title": "Grad-CAM attribution",
+    "show": "Show Grad-CAM",
+    "hide": "Hide Grad-CAM",
+    "notAvailable": "Grad-CAM attribution is not available for this analysis",
+    "loading": "Loading Grad-CAM data…",
+    "spaceNote": "This heatmap lives in the model's own 128×128×12 working space — it is not voxel-aligned with the NIfTI series shown above, so read it as an independent visualization, not a precise overlay on the scan.",
+    "standard": "Standard",
+    "websiteColors": "Website colors",
+    "lowAttribution": "Low attribution",
+    "highAttribution": "High attribution",
+    "sliceLabel": "Slice {{current}} of {{total}}"
+  },
+  "biomarkerConsistency": {
+    "title": "Biomarker consistency",
+    "note": "Indirect consistency signal between biomarkers derived by U-Net auto-segmentation and the prototypes of the class CNN3D predicted — not an exact attribution of the model, it's a comparison after the fact against a different classifier (nearest-centroid).",
+    "reference": "Reference: {{source}}",
+    "feature": "Feature",
+    "derivedValue": "Derived value",
+    "expectedFor": "Expected for {{predictedClass}}",
+    "scaledDeviation": "Scaled deviation",
+    "consistentColumn": "Consistent",
+    "consistent": "Consistent",
+    "deviates": "Deviates"
+  },
+  "llmExplanation": {
+    "title": "AI-suggested explanation",
+    "generate": "Generate explanation",
+    "view": "View explanation",
+    "hide": "Hide explanation",
+    "regenerate": "Regenerate",
+    "generating": "Generating explanation…",
+    "disclaimer": "Decision-support suggestion, written by a language model (Qwen2.5, running locally) from values the system already computed — this is not a diagnosis. Check whether it makes clinical sense before relying on it."
+  },
+  "language": {
+    "spanish": "ES",
+    "english": "EN"
+  },
+  "pages": {
+    "imagingViewer": {
+      "title": "Imaging viewer",
+      "subtitle": "Load a study's series, review segmentation overlays and biomarkers, and run AI-assisted analysis.",
+      "signInTitle": "Sign in to the imaging viewer"
+    },
+    "modelTraining": {
+      "title": "Model training",
+      "subtitle": "Launch retraining runs and review validation results for every model version.",
+      "signInTitle": "Sign in to the training console"
+    },
+    "explainabilityShowcase": {
+      "title": "Explainability showcase",
+      "subtitle": "Grad-CAM maps and the LIME-vs-Shapley comparison panel generated offline by EPIC-1's showcase script.",
+      "signInTitle": "Sign in to the explainability showcase"
+    }
+  }
+}

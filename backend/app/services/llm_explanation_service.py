@@ -30,15 +30,60 @@ from app.models.ai_analysis import AIAnalysis
 # "Generate explanation", not on every page load).
 _GENERATION_TIMEOUT_S = 90.0
 
-_SYSTEM_PROMPT = (
-    "Eres un asistente que redacta, en espanol, un resumen breve y claro para un "
-    "profesional clinico a partir de resultados YA CALCULADOS por un sistema de IA "
-    "(clasificacion de imagen cardiaca y una senal de consistencia de biomarcadores). "
-    "No inventes hallazgos ni valores que no se te den. No emitas un diagnostico ni "
-    "una recomendacion de tratamiento. Presenta el texto explicitamente como una "
-    "sugerencia de apoyo a la decision que el profesional debe verificar por su "
-    "propio criterio clinico, nunca como una conclusion cerrada. Maximo 4 frases."
-)
+# Matches SUPPORTED_LANGUAGES in frontend/src/i18n/index.ts — the UI's own
+# language toggle (EPIC-18 follow-up) drives which of these the endpoint
+# asks Ollama for, so the suggestion reads in whichever language the
+# clinician is already using, not always Spanish/English regardless of it.
+DEFAULT_LANGUAGE = "en"
+SUPPORTED_LANGUAGES = ("en", "es")
+
+_SYSTEM_PROMPTS = {
+    "es": (
+        "Eres un asistente que redacta, en español, un resumen breve y claro para un "
+        "profesional clínico a partir de resultados YA CALCULADOS por un sistema de IA "
+        "(clasificación de imagen cardíaca y una señal de consistencia de biomarcadores). "
+        "No inventes hallazgos ni valores que no se te den. No emitas un diagnóstico ni "
+        "una recomendación de tratamiento. Presenta el texto explícitamente como una "
+        "sugerencia de apoyo a la decisión que el profesional debe verificar por su "
+        "propio criterio clínico, nunca como una conclusión cerrada. Máximo 4 frases."
+    ),
+    "en": (
+        "You are an assistant who writes, in English, a short and clear summary for a "
+        "clinical professional from results a system ALREADY COMPUTED (cardiac image "
+        "classification and a biomarker-consistency signal). Never invent findings or "
+        "values you weren't given. Never issue a diagnosis or a treatment recommendation. "
+        "Present the text explicitly as a decision-support suggestion the professional "
+        "must verify against their own clinical judgment, never as a closed conclusion. "
+        "Maximum 4 sentences."
+    ),
+}
+
+_PROMPT_LABELS = {
+    "es": {
+        "predicted_class": "Clase predicha por el modelo",
+        "probabilities": "Probabilidades por clase",
+        "consistency": "Consistencia de biomarcadores derivados frente a lo esperado para la clase predicha",
+        "no_consistency": "No hay señal de consistencia de biomarcadores disponible para este análisis.",
+        "no_features": "Sin features individuales reportadas.",
+        "consistent": "consistente",
+        "deviates": "fuera de lo esperado",
+        "expected": "esperado para esta clase",
+        "scaled_deviation": "desviación escalada",
+        "closing": "Redacta el resumen para el profesional ahora, siguiendo las instrucciones del sistema.",
+    },
+    "en": {
+        "predicted_class": "Model's predicted class",
+        "probabilities": "Per-class probabilities",
+        "consistency": "Derived biomarker consistency against what's expected for the predicted class",
+        "no_consistency": "No biomarker consistency signal is available for this analysis.",
+        "no_features": "No individual features reported.",
+        "consistent": "consistent",
+        "deviates": "outside the expected range",
+        "expected": "expected for this class",
+        "scaled_deviation": "scaled deviation",
+        "closing": "Write the summary for the professional now, following the system instructions.",
+    },
+}
 
 
 class LlmExplanationError(RuntimeError):
@@ -49,41 +94,47 @@ class LlmExplanationError(RuntimeError):
     fabricated fallback string."""
 
 
-def _format_biomarker_consistency(biomarker_consistency: dict | None) -> str:
+def _normalize_language(language: str) -> str:
+    return language if language in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+
+
+def _format_biomarker_consistency(biomarker_consistency: dict | None, labels: dict[str, str]) -> str:
     if not biomarker_consistency:
-        return "No hay señal de consistencia de biomarcadores disponible para este análisis."
+        return labels["no_consistency"]
     lines = []
     for feature in biomarker_consistency.get("per_feature", []):
-        consistent = "consistente" if feature.get("consistent") else "fuera de lo esperado"
+        consistent = labels["consistent"] if feature.get("consistent") else labels["deviates"]
         lines.append(
-            f"- {feature['feature']}: valor derivado {feature['derived_value']:.2f} "
-            f"(esperado para esta clase: {feature['expected_value_for_predicted_class']:.2f}, "
-            f"desviación escalada {feature['scaled_deviation']:.2f} — {consistent})"
+            f"- {feature['feature']}: {feature['derived_value']:.2f} "
+            f"({labels['expected']}: {feature['expected_value_for_predicted_class']:.2f}, "
+            f"{labels['scaled_deviation']} {feature['scaled_deviation']:.2f} — {consistent})"
         )
-    return "\n".join(lines) if lines else "Sin features individuales reportadas."
+    return "\n".join(lines) if lines else labels["no_features"]
 
 
-def build_prompt(analysis: AIAnalysis) -> str:
+def build_prompt(analysis: AIAnalysis, language: str = DEFAULT_LANGUAGE) -> str:
+    labels = _PROMPT_LABELS[_normalize_language(language)]
     probabilities = analysis.probabilities or {}
     prob_lines = "\n".join(f"- {cls}: {p:.1%}" for cls, p in sorted(probabilities.items(), key=lambda kv: -kv[1]))
     return (
-        f"Clase predicha por el modelo: {analysis.predicted_class}\n"
-        f"Probabilidades por clase:\n{prob_lines}\n\n"
-        f"Consistencia de biomarcadores derivados frente a lo esperado para la clase predicha:\n"
-        f"{_format_biomarker_consistency(analysis.biomarker_consistency)}\n\n"
-        "Redacta el resumen para el profesional ahora, siguiendo las instrucciones del sistema."
+        f"{labels['predicted_class']}: {analysis.predicted_class}\n"
+        f"{labels['probabilities']}:\n{prob_lines}\n\n"
+        f"{labels['consistency']}:\n"
+        f"{_format_biomarker_consistency(analysis.biomarker_consistency, labels)}\n\n"
+        f"{labels['closing']}"
     )
 
 
-def generate_explanation(analysis: AIAnalysis) -> str:
+def generate_explanation(analysis: AIAnalysis, language: str = DEFAULT_LANGUAGE) -> str:
     settings = get_settings()
-    prompt = build_prompt(analysis)
+    normalized = _normalize_language(language)
+    prompt = build_prompt(analysis, normalized)
     try:
         response = httpx.post(
             f"{settings.ollama_url}/api/generate",
             json={
                 "model": settings.ollama_model,
-                "system": _SYSTEM_PROMPT,
+                "system": _SYSTEM_PROMPTS[normalized],
                 "prompt": prompt,
                 "stream": False,
             },

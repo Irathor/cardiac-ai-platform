@@ -1,0 +1,85 @@
+{
+  "disclaimer": {
+    "text": "Solo un prototipo de investigación. No validado para diagnóstico clínico ni decisiones de tratamiento."
+  },
+  "nav": {
+    "dashboard": "Panel",
+    "viewer": "Visor",
+    "training": "Entrenamiento",
+    "explainabilityShowcase": "Explicabilidad"
+  },
+  "login": {
+    "signInToContinue": "Inicia sesión para continuar.",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "logIn": "Entrar"
+  },
+  "dashboard": {
+    "eyebrow": "Plataforma de investigación de RM cardíaca",
+    "title": "CardiacAI Research Platform",
+    "subtitle": "Segmentación automatizada de RM cardíaca, extracción de biomarcadores funcionales y clasificación explicable de enfermedades",
+    "backendLabel": "Backend:",
+    "backendChecking": "comprobando...",
+    "backendUnreachable": "inalcanzable",
+    "backendOnline": "en línea",
+    "imagingViewerTitle": "Visor de imágenes",
+    "imagingViewerDescription": "Explora estudios, inspecciona series NIfTI y superposiciones de segmentación, y ejecuta clasificación asistida por IA sobre un estudio.",
+    "modelTrainingTitle": "Entrenamiento de modelos",
+    "modelTrainingDescription": "Lanza reentrenamientos y revisa los resultados de validación: métricas de segmentación, clasificación y calibración de cada versión del modelo."
+  },
+  "gradcam": {
+    "title": "Atribución Grad-CAM",
+    "show": "Mostrar Grad-CAM",
+    "hide": "Ocultar Grad-CAM",
+    "notAvailable": "El mapa de atribución Grad-CAM no está disponible para este análisis",
+    "loading": "Cargando datos de Grad-CAM…",
+    "spaceNote": "Este mapa de calor vive en el espacio de trabajo propio del modelo (128×128×12) — no está alineado voxel a voxel con la serie NIfTI mostrada arriba, así que léelo como una visualización independiente, no como una superposición precisa sobre la imagen.",
+    "standard": "Estándar",
+    "websiteColors": "Colores de la web",
+    "lowAttribution": "Atribución baja",
+    "highAttribution": "Atribución alta",
+    "sliceLabel": "Corte {{current}} de {{total}}"
+  },
+  "biomarkerConsistency": {
+    "title": "Consistencia de biomarcadores",
+    "note": "Señal de consistencia indirecta entre los biomarcadores derivados por auto-segmentación U-Net y los prototipos de la clase predicha por CNN3D — no es una atribución exacta del modelo, es una comparación posterior con un clasificador distinto (nearest-centroid).",
+    "reference": "Referencia: {{source}}",
+    "feature": "Característica",
+    "derivedValue": "Valor derivado",
+    "expectedFor": "Esperado para {{predictedClass}}",
+    "scaledDeviation": "Desviación escalada",
+    "consistentColumn": "Consistente",
+    "consistent": "Consistente",
+    "deviates": "Se desvía"
+  },
+  "llmExplanation": {
+    "title": "Explicación sugerida por IA",
+    "generate": "Generar explicación",
+    "view": "Ver explicación",
+    "hide": "Ocultar explicación",
+    "regenerate": "Regenerar",
+    "generating": "Generando explicación…",
+    "disclaimer": "Sugerencia de apoyo a la decisión, redactada por un modelo de lenguaje (Qwen2.5, local) a partir de los valores ya calculados por el sistema — no es un diagnóstico. Verifica si tiene sentido clínico antes de tenerla en cuenta."
+  },
+  "language": {
+    "spanish": "ES",
+    "english": "EN"
+  },
+  "pages": {
+    "imagingViewer": {
+      "title": "Visor de imágenes",
+      "subtitle": "Carga las series de un estudio, revisa las superposiciones de segmentación y biomarcadores, y ejecuta análisis asistido por IA.",
+      "signInTitle": "Inicia sesión en el visor de imágenes"
+    },
+    "modelTraining": {
+      "title": "Entrenamiento de modelos",
+      "subtitle": "Lanza reentrenamientos y revisa los resultados de validación de cada versión del modelo.",
+      "signInTitle": "Inicia sesión en la consola de entrenamiento"
+    },
+    "explainabilityShowcase": {
+      "title": "Explicabilidad",
+      "subtitle": "Mapas Grad-CAM y el panel comparativo LIME-vs-Shapley generados sin conexión por el script de la Epic 1.",
+      "signInTitle": "Inicia sesión en el showcase de explicabilidad"
+    }
+  }
+}

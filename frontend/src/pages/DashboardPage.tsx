@@ -2,6 +2,7 @@ import BiotechIcon from "@mui/icons-material/Biotech";
 import ModelTrainingIcon from "@mui/icons-material/ModelTraining";
 import ViewInArIcon from "@mui/icons-material/ViewInAr";
 import { alpha, Box, Button, Card, CardContent, Chip, Container, Fade, Grid, Stack, Typography } from "@mui/material";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { useBackendLiveness } from "../api/health";
@@ -10,6 +11,7 @@ import { tokens } from "../theme";
 /** Landing page introducing the platform and routing into its two workflows. */
 export function DashboardPage() {
   const { data, isLoading, isError } = useBackendLiveness();
+  const { t } = useTranslation();
 
   return (
     <Container sx={{ py: 6 }}>
@@ -17,28 +19,27 @@ export function DashboardPage() {
         <Box>
           <Chip
             icon={<BiotechIcon fontSize="small" />}
-            label="Cardiac MRI Research Platform"
+            label={t("dashboard.eyebrow")}
             size="small"
             variant="outlined"
             color="primary"
             sx={{ mb: 2 }}
           />
           <Typography variant="h3" gutterBottom>
-            CardiacAI Research Platform
+            {t("dashboard.title")}
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mb: 3 }}>
-            Automated Cardiac MRI Segmentation, Functional Biomarker Extraction and Explainable Disease
-            Classification
+            {t("dashboard.subtitle")}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="body2" color="text.secondary">
-              Backend:
+              {t("dashboard.backendLabel")}
             </Typography>
-            {isLoading && <Chip label="checking..." size="small" />}
-            {isError && <Chip label="unreachable" color="error" size="small" />}
+            {isLoading && <Chip label={t("dashboard.backendChecking")} size="small" />}
+            {isError && <Chip label={t("dashboard.backendUnreachable")} color="error" size="small" />}
             {data?.status === "ok" && (
               <Chip
-                label="online"
+                label={t("dashboard.backendOnline")}
                 color="success"
                 size="small"
                 sx={{ animation: "pulse-glow 2.2s ease-in-out infinite" }}
@@ -61,14 +62,13 @@ export function DashboardPage() {
             <CardContent sx={{ p: 3 }}>
               <ViewInArIcon sx={{ color: "primary.main", fontSize: 32, mb: 1 }} />
               <Typography variant="h6" gutterBottom>
-                Imaging viewer
+                {t("dashboard.imagingViewerTitle")}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Browse studies, inspect NIfTI series and segmentation overlays, and run AI-assisted
-                classification on a study.
+                {t("dashboard.imagingViewerDescription")}
               </Typography>
               <Button component={Link} to="/viewer" variant="contained">
-                Imaging viewer
+                {t("dashboard.imagingViewerTitle")}
               </Button>
             </CardContent>
           </Card>
@@ -85,14 +85,13 @@ export function DashboardPage() {
             <CardContent sx={{ p: 3 }}>
               <ModelTrainingIcon sx={{ color: "secondary.main", fontSize: 32, mb: 1 }} />
               <Typography variant="h6" gutterBottom>
-                Model training
+                {t("dashboard.modelTrainingTitle")}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Launch retraining runs and review validation results: segmentation, classification and
-                calibration metrics for every model version.
+                {t("dashboard.modelTrainingDescription")}
               </Typography>
               <Button component={Link} to="/admin/training" variant="outlined" color="secondary">
-                Model training
+                {t("dashboard.modelTrainingTitle")}
               </Button>
             </CardContent>
           </Card>

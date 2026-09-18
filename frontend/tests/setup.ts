@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import "../src/i18n";
 
 // jsdom has no ResizeObserver — recharts' ResponsiveContainer needs one to mount.
 class ResizeObserverStub {

@@ -1,9 +1,11 @@
 import MonitorHeartIcon from "@mui/icons-material/MonitorHeart";
 import { AppBar, Box, Button, Stack, Toolbar, Typography } from "@mui/material";
 import { type RefObject, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 
 import { quietSurface, tokens } from "../theme";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 // Hand-traced approximation of the "spike" in MonitorHeartIcon's own glyph
 // (baseline -> small dip -> sharp peak -> baseline), in the icon's own
@@ -83,20 +85,21 @@ function LogoSpark({
   );
 }
 
-const NAV_ITEMS: Array<{ to: string; label: string }> = [
-  { to: "/", label: "Dashboard" },
-  { to: "/viewer", label: "Viewer" },
+const NAV_ITEMS: Array<{ to: string; labelKey: string }> = [
+  { to: "/", labelKey: "nav.dashboard" },
+  { to: "/viewer", labelKey: "nav.viewer" },
   // Engineering/governance items grouped together, deliberately next to each
   // other and away from /viewer — the explainability showcase is a
   // pedagogical artifact for engineers, never part of the clinical flow
   // (see EPIC-15 "Contrato técnico" point 5).
-  { to: "/admin/training", label: "Training" },
-  { to: "/explainability-showcase", label: "Explainability showcase" },
+  { to: "/admin/training", labelKey: "nav.training" },
+  { to: "/explainability-showcase", labelKey: "nav.explainabilityShowcase" },
 ];
 
 /** Slim site-wide nav so /viewer, /admin/training, and /explainability-showcase are reachable without editing the URL. */
 export function SiteHeader() {
   const location = useLocation();
+  const { t } = useTranslation();
   const iconRef = useRef<SVGSVGElement>(null);
   const logoContainerRef = useRef<HTMLDivElement>(null);
 
@@ -150,10 +153,11 @@ export function SiteHeader() {
                   color: active ? "primary.main" : "text.secondary",
                 }}
               >
-                {item.label}
+                {t(item.labelKey)}
               </Button>
             );
           })}
+          <LanguageSwitcher />
         </Stack>
       </Toolbar>
       {/* The single structural motif tying the chrome to the subject matter:

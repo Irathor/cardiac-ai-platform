@@ -22,6 +22,7 @@ import {
 } from "@mui/material";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { login as loginRequest } from "../api/auth";
 import { listDatasets, listDatasetVersions } from "../api/datasets";
@@ -108,6 +109,7 @@ function driftTabAvailable(version: ModelVersionOut | null): boolean {
  * own login form too, following that same pattern.
  */
 export function ModelTrainingPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("admin@demo.cardiacai-test.dev");
   const [password, setPassword] = useState("Demo-Password-123!");
   const [token, setToken] = useState<string | null>(null);
@@ -249,15 +251,15 @@ export function ModelTrainingPage() {
   return (
     <Container sx={{ py: 4 }}>
       <Typography variant="h4" gutterBottom>
-        Model training
+        {t("pages.modelTraining.title")}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Launch retraining runs and review validation results for every model version.
+        {t("pages.modelTraining.subtitle")}
       </Typography>
 
       {!token && (
         <LoginCard
-          title="Sign in to the training console"
+          title={t("pages.modelTraining.signInTitle")}
           email={email}
           password={password}
           error={loginError}

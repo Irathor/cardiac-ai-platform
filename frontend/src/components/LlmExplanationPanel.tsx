@@ -1,5 +1,6 @@
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Stack, Typography } from "@mui/material";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { fetchOrGenerateLlmExplanation } from "../api/analysis";
 import { quietSurface } from "../theme";
@@ -31,18 +32,28 @@ export function LlmExplanationPanel({
   explanationAvailable,
   explanationError,
 }: LlmExplanationPanelProps) {
+  const { t, i18n } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(explanationError);
+  // The language the *currently shown* explanation was actually generated
+  // in — not necessarily i18n.language yet, since generation is async.
+  // Drives the effect below: when the UI language changes, the backend's
+  // own per-language cache decides whether that's a real regeneration or a
+  // cache hit (see POST .../explanation), this just makes sure the request
+  // fires.
+  const shownLanguageRef = useRef<string | null>(null);
 
   function generate(force: boolean) {
     setLoading(true);
     setError(null);
-    fetchOrGenerateLlmExplanation(analysisId, token, force)
+    const requestedLanguage = i18n.language;
+    fetchOrGenerateLlmExplanation(analysisId, token, force, requestedLanguage)
       .then((result) => {
         setExplanation(result.explanation);
         setError(result.error);
+        shownLanguageRef.current = requestedLanguage;
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Could not generate an explanation");
@@ -58,29 +69,42 @@ export function LlmExplanationPanel({
     }
   }
 
+  // Follows the site-wide language toggle: if the panel is open and already
+  // showing something in a different language than what's now selected,
+  // re-fetch (the backend serves its own cache when that language was
+  // already generated before, or generates fresh otherwise — see
+  // POST .../explanation's per-language cache).
+  useEffect(() => {
+    if (expanded && !loading && shownLanguageRef.current !== null && shownLanguageRef.current !== i18n.language) {
+      generate(false);
+    }
+  }, [i18n.language]);
+
   return (
     <Card sx={{ ...quietSurface(), mt: 2 }}>
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" useFlexGap spacing={1}>
-          <Typography variant="subtitle1">AI-suggested explanation</Typography>
+          <Typography variant="subtitle1">{t("llmExplanation.title")}</Typography>
           <Button size="small" variant="outlined" onClick={handleToggle} aria-expanded={expanded}>
-            {expanded ? "Hide explanation" : explanationAvailable ? "View explanation" : "Generate explanation"}
+            {expanded
+              ? t("llmExplanation.hide")
+              : explanationAvailable
+                ? t("llmExplanation.view")
+                : t("llmExplanation.generate")}
           </Button>
         </Stack>
 
         {expanded && (
           <Box sx={{ mt: 2 }}>
             <Alert severity="warning" sx={{ mb: 2 }}>
-              Sugerencia de apoyo a la decisión, redactada por un modelo de lenguaje (Qwen2.5, local) a
-              partir de los valores ya calculados por el sistema — no es un diagnóstico. Verifica si
-              tiene sentido clínico antes de tenerla en cuenta.
+              {t("llmExplanation.disclaimer")}
             </Alert>
 
             {loading && (
               <Stack direction="row" spacing={1} alignItems="center">
                 <CircularProgress size={18} />
                 <Typography variant="body2" color="text.secondary">
-                  Generando explicación…
+                  {t("llmExplanation.generating")}
                 </Typography>
               </Stack>
             )}
@@ -93,7 +117,7 @@ export function LlmExplanationPanel({
                   {explanation}
                 </Typography>
                 <Button size="small" onClick={() => generate(true)} sx={{ alignSelf: "flex-start" }}>
-                  Regenerate
+                  {t("llmExplanation.regenerate")}
                 </Button>
               </Stack>
             )}

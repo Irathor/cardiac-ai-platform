@@ -91,6 +91,9 @@ export function fetchOrGenerateLlmExplanation(
   analysisId: string,
   token: string,
   force = false,
+  language = "en",
 ): Promise<LlmExplanation> {
-  return apiPostAuthed(`/analyses/${analysisId}/explanation${force ? "?force=true" : ""}`, {}, token);
+  const params = new URLSearchParams({ language });
+  if (force) params.set("force", "true");
+  return apiPostAuthed(`/analyses/${analysisId}/explanation?${params.toString()}`, {}, token);
 }

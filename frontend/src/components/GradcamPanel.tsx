@@ -12,6 +12,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { fetchGradcamAttribution } from "../api/analysis";
 import { parseNpyFloat32, type ParsedNpyFloat32 } from "../lib/npy";
@@ -90,6 +91,7 @@ const LEGEND_STOPS = [0, 0.25, 0.5, 0.75, 1];
  * an ungrounded blob with no indication of what the colors mean (found via
  * direct user feedback on the first render of this panel). */
 function AttributionLegend({ scheme }: { scheme: ColorScheme }) {
+  const { t } = useTranslation();
   const gradientStops = LEGEND_STOPS.map((stop) => {
     const [r, g, b] = attributionColor(stop, scheme);
     return `rgb(${r},${g},${b}) ${stop * 100}%`;
@@ -106,10 +108,10 @@ function AttributionLegend({ scheme }: { scheme: ColorScheme }) {
       />
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
         <Typography variant="caption" color="text.secondary">
-          Low attribution
+          {t("gradcam.lowAttribution")}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          High attribution
+          {t("gradcam.highAttribution")}
         </Typography>
       </Stack>
     </Box>
@@ -125,6 +127,7 @@ function AttributionLegend({ scheme }: { scheme: ColorScheme }) {
  * exist). Owns its own fetch: nothing happens until the user asks to see it.
  */
 export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError }: GradcamPanelProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -181,17 +184,17 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
     <Card sx={{ ...quietSurface() }}>
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" useFlexGap spacing={1}>
-          <Typography variant="subtitle1">Grad-CAM attribution</Typography>
+          <Typography variant="subtitle1">{t("gradcam.title")}</Typography>
           {gradcamAvailable && (
             <Button size="small" variant="outlined" onClick={handleToggle} aria-expanded={expanded}>
-              {expanded ? "Hide Grad-CAM" : "Show Grad-CAM"}
+              {expanded ? t("gradcam.hide") : t("gradcam.show")}
             </Button>
           )}
         </Stack>
 
         {!gradcamAvailable && (
           <Alert severity="info" sx={{ mt: 1 }}>
-            Grad-CAM attribution is not available for this analysis
+            {t("gradcam.notAvailable")}
             {gradcamError ? `: ${gradcamError}` : "."}
           </Alert>
         )}
@@ -199,16 +202,14 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
         {gradcamAvailable && expanded && (
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              This heatmap lives in the model&apos;s own 128×128×12 working space — it is
-              not voxel-aligned with the NIfTI series shown above, so read it as an
-              independent visualization, not a precise overlay on the scan.
+              {t("gradcam.spaceNote")}
             </Typography>
 
             {loading && (
               <Stack direction="row" spacing={1} alignItems="center">
                 <CircularProgress size={18} />
                 <Typography variant="body2" color="text.secondary">
-                  Loading Grad-CAM data…
+                  {t("gradcam.loading")}
                 </Typography>
               </Stack>
             )}
@@ -227,10 +228,10 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
                   aria-label="Grad-CAM colormap"
                 >
                   <ToggleButton value="standard" aria-label="Standard colormap">
-                    Standard
+                    {t("gradcam.standard")}
                   </ToggleButton>
                   <ToggleButton value="site" aria-label="Website colors">
-                    Website colors
+                    {t("gradcam.websiteColors")}
                   </ToggleButton>
                 </ToggleButtonGroup>
 
@@ -252,7 +253,7 @@ export function GradcamPanel({ analysisId, token, gradcamAvailable, gradcamError
                 </Box>
                 <Box sx={{ width: "100%", maxWidth: 320, px: 1 }}>
                   <Typography id="gradcam-slice-label" variant="caption" color="text.secondary">
-                    Slice {slice + 1} of {sliceCount}
+                    {t("gradcam.sliceLabel", { current: slice + 1, total: sliceCount })}
                   </Typography>
                   <Slider
                     aria-labelledby="gradcam-slice-label"

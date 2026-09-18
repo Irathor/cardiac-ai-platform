@@ -93,26 +93,37 @@ def get_analysis_gradcam(
 def generate_analysis_explanation(
     analysis_id: uuid.UUID,
     force: bool = False,
+    language: str = llm_explanation_service.DEFAULT_LANGUAGE,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles(RoleName.ADMIN, RoleName.DOCTOR)),
 ) -> LlmExplanationOut:
-    """EPIC-18: returns the cached explanation if one exists (unless
-    `force=true`), otherwise generates one for real via the local Ollama
-    model and caches it. Always 200 — a generation failure (Ollama down,
-    etc.) is an honest `error` field, not an HTTP error, same pattern as
-    `gradcam_error`/`biomarker_consistency_error` elsewhere on this model."""
+    """EPIC-18 (+ follow-up: the explanation now follows the UI's own
+    language toggle): returns the cached explanation if one exists in the
+    requested language (unless `force=true`), otherwise generates one for
+    real via the local Ollama model and caches it alongside the language it
+    was written in — switching the UI language invalidates the cache for
+    this analysis the same way `force=true` does, so the clinician never
+    sees a stale-language suggestion silently reused. Always 200 — a
+    generation failure (Ollama down, etc.) is an honest `error` field, not
+    an HTTP error, same pattern as `gradcam_error`/`biomarker_consistency_error`
+    elsewhere on this model."""
     analysis = _load_analysis(db, analysis_id, current_user)
-    if analysis.llm_explanation is not None and not force:
+    normalized_language = language if language in llm_explanation_service.SUPPORTED_LANGUAGES else llm_explanation_service.DEFAULT_LANGUAGE
+    already_cached_in_language = (
+        analysis.llm_explanation is not None and analysis.llm_explanation_language == normalized_language
+    )
+    if already_cached_in_language and not force:
         return LlmExplanationOut(explanation=analysis.llm_explanation, error=None)
 
     try:
-        explanation = llm_explanation_service.generate_explanation(analysis)
+        explanation = llm_explanation_service.generate_explanation(analysis, normalized_language)
     except LlmExplanationError as exc:
         analysis.llm_explanation_error = str(exc)
         db.commit()
         return LlmExplanationOut(explanation=None, error=str(exc))
 
     analysis.llm_explanation = explanation
+    analysis.llm_explanation_language = normalized_language
     analysis.llm_explanation_error = None
     db.commit()
     return LlmExplanationOut(explanation=explanation, error=None)

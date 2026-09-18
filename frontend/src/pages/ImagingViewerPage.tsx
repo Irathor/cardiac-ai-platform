@@ -16,6 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { fetchAnalysis, requestAnalysis, type AIAnalysis } from "../api/analysis";
 import { login as loginRequest } from "../api/auth";
@@ -54,6 +55,7 @@ const ANALYSIS_STATUS_COLOR: Record<string, "default" | "info" | "success" | "er
  * its own login form rather than depending on one that doesn't exist.
  */
 export function ImagingViewerPage() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("doctor@demo.cardiacai-test.dev");
   const [password, setPassword] = useState("Demo-Password-123!");
   const [token, setToken] = useState<string | null>(null);
@@ -137,15 +139,15 @@ export function ImagingViewerPage() {
   return (
     <Container sx={{ py: 4 }}>
       <Typography variant="h4" gutterBottom>
-        Imaging viewer
+        {t("pages.imagingViewer.title")}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Load a study's series, review segmentation overlays and biomarkers, and run AI-assisted analysis.
+        {t("pages.imagingViewer.subtitle")}
       </Typography>
 
       {!token && (
         <LoginCard
-          title="Sign in to the imaging viewer"
+          title={t("pages.imagingViewer.signInTitle")}
           email={email}
           password={password}
           error={loginError}
