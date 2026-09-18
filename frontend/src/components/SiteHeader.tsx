@@ -23,10 +23,15 @@ const ICON_ZIGZAG: Array<[number, number]> = [
 // lag behind the lead dot by exactly that time, which is what reads as a
 // fading trail (longer while the dot is moving fast through the middle,
 // short while it's slow at the start/end, same as a real comet tail).
+// Close together + many of them (not 3 spaced-out ones) is what makes this
+// blur into a continuous fading line rather than a string of separate dots.
 const SPARK_ECHOES: Array<{ delayMs: number; peakOpacity: number }> = [
-  { delayMs: 60, peakOpacity: 0.4 },
-  { delayMs: 120, peakOpacity: 0.22 },
-  { delayMs: 180, peakOpacity: 0.1 },
+  { delayMs: 25, peakOpacity: 0.55 },
+  { delayMs: 50, peakOpacity: 0.42 },
+  { delayMs: 75, peakOpacity: 0.3 },
+  { delayMs: 100, peakOpacity: 0.2 },
+  { delayMs: 130, peakOpacity: 0.12 },
+  { delayMs: 165, peakOpacity: 0.06 },
 ];
 
 /** The animated dot (+ fading trail) that crosses the icon's own "spike"

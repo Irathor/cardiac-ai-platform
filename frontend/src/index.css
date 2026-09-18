@@ -58,16 +58,27 @@
    of cutting through it in a straight line. The cubic-bezier timing (not
    linear) is what gives the "starts slow, speeds up through the middle,
    ends slow" motion from just two `offset-distance` keyframes.
-   `.logo-spark-echo` are 3 identical, blurred, lower-opacity copies started
-   a little later (see SPARK_ECHOES) — since they share the exact same
-   path/timing, staggering only their start time makes them lag behind the
-   lead dot by that long, which reads as a trail that fades shortly after
-   the dot passes, without animating a separate stroke/dash effect. */
+   `margin: 0 !important` is load-bearing, not decorative: these elements
+   are children of a MUI `Stack` with `spacing`, which injects its own
+   `margin-left` on every child after the first via a more specific
+   generated rule — without overriding it back to 0 here, every dot/echo
+   renders shifted right by that spacing amount, off the real path
+   entirely (found via direct user report that the spark didn't start at
+   the icon and didn't track it). `offset-anchor: auto` already centers
+   the box on the path point on its own, so no manual centering margin is
+   needed once Stack's own margin stops fighting it.
+   `.logo-spark-echo` are several identical, blurred, lower-opacity copies
+   started a little later (see SPARK_ECHOES) — since they share the exact
+   same path/timing, staggering only their start time makes them lag
+   behind the lead dot by that long, which reads as a trail that fades
+   shortly after the dot passes. Small/close/many enough to blur into a
+   continuous fading line rather than separate dots. */
 .logo-spark,
 .logo-spark-echo {
   position: absolute;
   top: 0;
   left: 0;
+  margin: 0 !important;
   border-radius: 50%;
   pointer-events: none;
   offset-rotate: 0deg;
@@ -78,17 +89,15 @@
 .logo-spark {
   width: 3px;
   height: 3px;
-  margin: -1.5px 0 0 -1.5px;
   background-color: #34f5c1;
   box-shadow: 0 0 3px 0.5px rgba(52, 245, 193, 0.7);
 }
 
 .logo-spark-echo {
-  width: 3px;
-  height: 3px;
-  margin: -1.5px 0 0 -1.5px;
+  width: 2.5px;
+  height: 2.5px;
   background-color: #34f5c1;
-  filter: blur(1.5px);
+  filter: blur(0.8px);
 }
 
 @keyframes logo-spark-travel {
