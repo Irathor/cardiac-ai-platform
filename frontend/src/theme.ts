@@ -64,32 +64,64 @@ export type Accent = "cyan" | "violet";
 
 const accentColor: Record<Accent, string> = { cyan: tokens.cyan, violet: tokens.violet };
 
-/** Flat, quiet tier — the default for tables, lists, secondary panels. No glow, no lift. */
-export function quietSurface(): CSSObject {
+/**
+ * Interactive hover for a container box only (never spread onto the chips/
+ * buttons/list items that live inside one — those already own their own
+ * hover states via MuiButton/MuiChip/MuiListItemButton). Bright bioluminescent
+ * glow that gently pulses ("vibra ligeramente") on hover, regardless of the
+ * card's own domain accent — the hover signal is deliberately always green,
+ * so it reads as "this box responds to you" distinctly from the static
+ * cyan/violet domain coding.
+ */
+function containerHover(): CSSObject {
+  return {
+    transition: "border-color 200ms ease, box-shadow 200ms ease",
+    "&:hover": {
+      borderColor: tokens.cyan,
+      animation: "container-hover-glow 1.6s ease-in-out infinite",
+    },
+  };
+}
+
+/**
+ * Flat-ish quiet tier — the default for tables, lists, secondary panels.
+ * No lift, no border glow at rest, but carries the same corner gradient as
+ * the hero tier (see `heroSurface`) at a lower opacity so every card in the
+ * app shares one visual language, and brightens on hover like any other
+ * container box.
+ */
+export function quietSurface(accent: Accent = "cyan"): CSSObject {
+  const c = accentColor[accent];
   return {
     backgroundColor: tokens.surface,
+    backgroundImage: `radial-gradient(circle at 80% 0%, ${alpha(c, 0.14)}, transparent 50%)`,
     border: `1px solid ${tokens.line}`,
     borderRadius: "10px",
     boxShadow: "none",
+    ...containerHover(),
   };
 }
 
 /**
  * Hero tier — reserved for the single focal element on a screen. Raised
  * surface + directional glow: a radial glow anchored at the top-right
- * corner over the raised base color (same `radial-gradient(circle at 80%
- * 0%, ...)` the approved "Bioluminescent Dark" moodboard used — reads as a
- * diagonal light-to-dark gradient from bottom-left to top-right, not a
- * flat fill), plus a real drop shadow so the card lifts off the page.
+ * corner over the raised base color — exactly the `radial-gradient(circle
+ * at 80% 0%, rgba(52,245,193,0.14), transparent 50%)` the approved
+ * "Bioluminescent Dark" moodboard used (`project/B-Bioluminescent.dc.html`
+ * in the design artifact), which reads as a diagonal light-to-dark
+ * gradient from bottom-left to top-right, not a flat fill — plus a real
+ * drop shadow so the card lifts off the page, and the same hover glow as
+ * every other container box.
  */
 export function heroSurface(accent: Accent = "cyan"): CSSObject {
   const c = accentColor[accent];
   return {
     backgroundColor: tokens.surfaceRaised,
-    backgroundImage: `radial-gradient(circle at 80% 0%, ${alpha(c, 0.16)}, transparent 55%)`,
+    backgroundImage: `radial-gradient(circle at 80% 0%, ${alpha(c, 0.14)}, transparent 50%)`,
     border: `1px solid ${alpha(c, 0.4)}`,
     borderRadius: "16px",
     boxShadow: `0 0 0 1px ${alpha(c, 0.06)}, 0 24px 64px -28px ${alpha(c, 0.55)}, 0 12px 32px -16px rgba(0, 0, 0, 0.6)`,
+    ...containerHover(),
   };
 }
 
@@ -163,19 +195,27 @@ export const theme = createTheme({
     MuiButton: {
       styleOverrides: {
         root: { borderRadius: 8, fontWeight: 600 },
+        // A flat bright-cyan/violet fill can't hold white or pale-green text
+        // at WCAG AA contrast (both ends are light colors) — filled with a
+        // translucent accent glow over the dark raised surface instead (same
+        // technique as heroSurface's corner glow), bright accent border for
+        // brand identity, so the label stays legible while still reading as
+        // "the accent color" rather than defaulting back to dark text.
         containedPrimary: {
-          backgroundImage: `linear-gradient(135deg, ${tokens.cyan}, ${tokens.cyanDark})`,
-          color: "#03120f",
+          backgroundColor: tokens.surfaceRaised,
+          backgroundImage: `linear-gradient(135deg, ${alpha(tokens.cyan, 0.4)}, transparent)`,
+          color: tokens.textPrimary,
+          border: `1px solid ${alpha(tokens.cyan, 0.55)}`,
           transition: "box-shadow 200ms ease",
-          "&:hover": {
-            boxShadow: `0 0 20px ${alpha(tokens.cyan, 0.4)}`,
-            backgroundImage: `linear-gradient(135deg, ${tokens.cyan}, ${tokens.cyanDark})`,
-          },
+          "&:hover": { boxShadow: `0 0 20px ${alpha(tokens.cyan, 0.45)}` },
         },
         containedSecondary: {
-          backgroundImage: `linear-gradient(135deg, ${tokens.violet}, ${tokens.violetDark})`,
+          backgroundColor: tokens.surfaceRaised,
+          backgroundImage: `linear-gradient(135deg, ${alpha(tokens.violet, 0.45)}, transparent)`,
+          color: tokens.textPrimary,
+          border: `1px solid ${alpha(tokens.violet, 0.55)}`,
           transition: "box-shadow 200ms ease",
-          "&:hover": { boxShadow: `0 0 20px ${alpha(tokens.violet, 0.4)}` },
+          "&:hover": { boxShadow: `0 0 20px ${alpha(tokens.violet, 0.45)}` },
         },
         outlined: {
           borderColor: alpha(tokens.cyan, 0.4),

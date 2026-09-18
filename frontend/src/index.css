@@ -33,6 +33,24 @@
   }
 }
 
+/* Hover feedback for a container box (quietSurface()/heroSurface() cards) —
+   deliberately a different rhythm than pulse-glow above, which stays
+   reserved for a genuine "live" state: this one only ever plays while the
+   pointer is actually over the box. */
+@keyframes container-hover-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(52, 245, 193, 0.5),
+      0 0 20px rgba(52, 245, 193, 0.35);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(52, 245, 193, 0.7),
+      0 0 30px rgba(52, 245, 193, 0.55);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -140,5 +140,41 @@ el dashboard) no cambian — el gradiente es exclusivo del tier hero, consistent
 hero por pantalla". Verificado: `npm run lint`/`build`/`vitest run` (40/40) en verde, capturas
 reales de `/admin/training` (hero) y `/` (dashboard, quiet, sin cambios) comparadas.
 
+### Segundo ajuste post-cierre (fidelidad exacta al gradiente + interacción + contraste de botones)
+Cuatro pedidos directos y explícitos del usuario tras ver capturas del primer ajuste:
+1. **Gradiente no exactamente igual al mood board**: el primer ajuste usaba `alpha(c, 0.16)`/
+   `transparent 55%`; el mood board real usa `rgba(52,245,193,0.14)`/`transparent 50%`.
+   Corregido a los valores exactos en `heroSurface(accent)`.
+2. **Todas las cajas, no solo la hero**: `quietSurface(accent)` gana el mismo `backgroundImage`
+   (mismo `radial-gradient`, mismo opacity) — cambia la firma de `quietSurface()` a aceptar un
+   `accent` opcional (`"cyan"` por defecto, igual que `heroSurface`); todos los call sites
+   existentes sin argumento siguen compilando igual. Esto es una desviación explícita, pedida
+   por el usuario, del principio "un único hero por pantalla, el resto plano" que fijó el primer
+   cierre de esta Epic — la distinción quiet/hero se sigue leyendo por borde+sombra, no ya por
+   presencia/ausencia de degradado.
+3. **Hover con glow verde que "vibra ligeramente", solo en las cajas contenedoras**: nueva
+   función interna `containerHover()` (fusionada dentro de `quietSurface()`/`heroSurface()`,
+   nunca aplicada aparte a Chips/Botones/ListItemButton, que ya tienen su propio hover) más
+   `@keyframes container-hover-glow` en `index.css` — deliberadamente un ritmo distinto del
+   `pulse-glow` "señal viva" ya existente (ese sigue reservado a estados realmente en vivo), solo
+   se reproduce mientras el puntero está encima.
+4. **Texto de los botones "contained" blanco/verde pálido, no oscuro**: el `color` oscuro
+   (`#03120f`) de `containedPrimary`/`containedSecondary` se sustituye por `tokens.textPrimary`
+   (blanco). Verificado que **el relleno sólido brillante original no pasaba WCAG AA con texto
+   claro** (cálculo de contraste real: blanco sobre `tokens.cyan` ≈ 1.3:1, sobre `tokens.cyanDark`
+   ≈ 3.1:1 — ambos muy por debajo de 4.5:1) — en vez de aplicar el texto claro sobre el mismo
+   relleno brillante (que habría fallado accesibilidad), el relleno pasa a un glow translúcido
+   sobre la superficie oscura elevada (`linear-gradient(135deg, alpha(accent,0.4), transparent)`
+   sobre `surfaceRaised`, con borde de acento brillante) — mismo lenguaje visual que el glow de
+   `heroSurface`, contraste verificado >4.5:1 en todo el rango del degradado. Decisión de
+   implementación tomada de forma autónoma (el "cómo" de cumplir el pedido del usuario sin violar
+   el mínimo de accesibilidad que la propia Epic ya fijó como criterio de aceptación), no una
+   escalada — anotada aquí para que quede explícita, no silenciosa.
+
+Verificado: `npm run lint`/`build`/`vitest run` (40/40) en verde; capturas reales de hover sobre
+una tarjeta del dashboard confirmando que solo la tarjeta bajo el puntero se ilumina (la
+adyacente permanece sin cambios) y que el botón "Log in" muestra texto blanco legible sobre el
+nuevo relleno.
+
 ## Estado
 Completada
