@@ -100,19 +100,67 @@
   filter: blur(0.8px);
 }
 
+/* The dot only crosses the icon now (see LogoSpark's shortened offset-path)
+   — it hands off to `.logo-text-outline` (below) once it reaches the
+   icon's right edge, rather than continuing through the letters. That
+   crossing happens in the first ~28% of this 3.2s cycle; the dot stays
+   put (invisible) for the rest of it while the outline takes over. */
 @keyframes logo-spark-travel {
   0% {
     offset-distance: 0%;
     opacity: 0;
   }
-  6% {
+  5% {
     opacity: var(--spark-peak-opacity, 1);
   }
-  94% {
+  28% {
+    offset-distance: 100%;
     opacity: var(--spark-peak-opacity, 1);
   }
+  33%,
   100% {
     offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+/* The border that "rodea las letras" (wraps the letters) once the dot
+   finishes crossing the icon: a rect around the measured text box, drawn
+   with the classic SVG reveal trick (`pathLength="1"` normalizes the
+   whole perimeter to 1 unit, so `stroke-dasharray: 1 1` + animating
+   `stroke-dashoffset` 1 -> 0 draws it start-to-end regardless of the
+   text's actual pixel size). Timed to start right as the dot fades
+   (~30%), finish drawing by ~78%, hold briefly, then fade out just before
+   the next cycle's dot reappears at the icon — same shared 3.2s duration
+   as `.logo-spark` so the handoff reads as one continuous motion instead
+   of two independent animations that happen to be nearby. */
+.logo-text-outline rect {
+  stroke: #34f5c1;
+  stroke-width: 1.25;
+  stroke-dasharray: 1 1;
+  filter: drop-shadow(0 0 2px rgba(52, 245, 193, 0.8));
+  animation: logo-text-outline-draw 3.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes logo-text-outline-draw {
+  0%,
+  30% {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  32% {
+    opacity: 1;
+  }
+  78% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    stroke-dashoffset: 0;
     opacity: 0;
   }
 }
