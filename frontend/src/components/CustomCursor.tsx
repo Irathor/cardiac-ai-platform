@@ -68,7 +68,7 @@ export function CustomCursor() {
     >
       <path
         d="M2 2 L2 18 L8 14 L11 21 L14 20 L11 13 L19 13 Z"
-        fill={tokens.cyanLight}
+        fill={tokens.cyan}
         stroke={tokens.textPrimary}
         strokeWidth="1.3"
         strokeLinejoin="round"
