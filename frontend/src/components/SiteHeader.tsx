@@ -10,10 +10,7 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 // Hand-traced approximation of the "spike" in MonitorHeartIcon's own glyph
 // (baseline -> small dip -> sharp peak -> baseline), in the icon's own
 // 24x24 viewBox units — re-anchored onto the icon's real rendered box by
-// LogoSpark below. The dot only ever travels this far now — once it
-// reaches the icon's right edge it hands off to the text-outline border
-// (see BORDER_RECT_PADDING below), rather than continuing in a straight
-// line through the letters.
+// LogoSpark below, then extended in a straight line to the end of the text.
 const ICON_ZIGZAG: Array<[number, number]> = [
   [1, 12],
   [8, 12],
@@ -39,19 +36,16 @@ const SPARK_ECHOES: Array<{ delayMs: number; peakOpacity: number }> = [
   { delayMs: 165, peakOpacity: 0.06 },
 ];
 
-// Padding around the measured text box the outline sits at, and its corner
-// radius — just enough breathing room that the stroke doesn't touch the
-// letters themselves.
-const BORDER_RECT_PADDING = 4;
-const BORDER_RECT_RADIUS = 6;
-
-/**
- * The animated dot (+ fading trail) that crosses the icon's own "spike",
- * then hands off to `TextOutline` (below) once it reaches the icon's right
- * edge. Renders nothing until it has measured the icon's real position, so
- * it never flashes at a wrong spot.
- */
-function LogoSpark({ iconRef, containerRef }: { iconRef: RefObject<SVGSVGElement | null>; containerRef: RefObject<HTMLDivElement | null> }) {
+/** The animated dot (+ fading trail) that crosses the icon's own "spike"
+ * then continues across "CardiacAI". Renders nothing until it has measured
+ * the icon's real position, so it never flashes at a wrong spot. */
+function LogoSpark({
+  iconRef,
+  containerRef,
+}: {
+  iconRef: RefObject<SVGSVGElement | null>;
+  containerRef: RefObject<HTMLDivElement | null>;
+}) {
   const [offsetPath, setOffsetPath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,9 +58,13 @@ function LogoSpark({ iconRef, containerRef }: { iconRef: RefObject<SVGSVGElement
     const iconTop = iconBox.top - containerBox.top;
     const scaleX = iconBox.width / 24;
     const scaleY = iconBox.height / 24;
+    const baselineY = iconTop + 12 * scaleY;
 
     const points = ICON_ZIGZAG.map(([x, y]) => `${iconLeft + x * scaleX},${iconTop + y * scaleY}`);
-    setOffsetPath(`path("M ${points.join(" L ")}")`);
+    // +4px margin so a slightly-late webfont swap widening the text doesn't
+    // leave the spark stopping just short of the last letter.
+    const d = `M ${points.join(" L ")} L ${containerBox.width + 4},${baselineY}`;
+    setOffsetPath(`path("${d}")`);
   }, [iconRef, containerRef]);
 
   if (!offsetPath) return null;
@@ -87,53 +85,6 @@ function LogoSpark({ iconRef, containerRef }: { iconRef: RefObject<SVGSVGElement
   );
 }
 
-/**
- * The glowing border that draws itself around "CardiacAI" once the dot
- * finishes crossing the icon, holds fully drawn for a beat, then fades out
- * again right as the dot reappears at the icon to start the next loop —
- * timed via `container-text-outline` sharing the same 3.2s cycle as
- * `.logo-spark`'s own `logo-spark-travel` (see index.css for exactly how
- * the handoff is split across that one cycle).
- */
-function TextOutline({ textRef, containerRef }: { textRef: RefObject<HTMLElement | null>; containerRef: RefObject<HTMLDivElement | null> }) {
-  const [rect, setRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
-
-  useEffect(() => {
-    const text = textRef.current;
-    const container = containerRef.current;
-    if (!text || !container) return;
-    const textBox = text.getBoundingClientRect();
-    const containerBox = container.getBoundingClientRect();
-    setRect({
-      x: textBox.left - containerBox.left - BORDER_RECT_PADDING,
-      y: textBox.top - containerBox.top - BORDER_RECT_PADDING,
-      width: textBox.width + BORDER_RECT_PADDING * 2,
-      height: textBox.height + BORDER_RECT_PADDING * 2,
-    });
-  }, [textRef, containerRef]);
-
-  if (!rect) return null;
-
-  return (
-    <Box
-      aria-hidden="true"
-      component="svg"
-      className="logo-text-outline"
-      sx={{ position: "absolute", top: 0, left: 0, overflow: "visible", pointerEvents: "none" }}
-    >
-      <rect
-        x={rect.x}
-        y={rect.y}
-        width={rect.width}
-        height={rect.height}
-        rx={BORDER_RECT_RADIUS}
-        pathLength={1}
-        fill="none"
-      />
-    </Box>
-  );
-}
-
 const NAV_ITEMS: Array<{ to: string; labelKey: string }> = [
   { to: "/", labelKey: "nav.dashboard" },
   { to: "/viewer", labelKey: "nav.viewer" },
@@ -150,7 +101,6 @@ export function SiteHeader() {
   const location = useLocation();
   const { t } = useTranslation();
   const iconRef = useRef<SVGSVGElement>(null);
-  const logoTextRef = useRef<HTMLElement>(null);
   const logoContainerRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -170,7 +120,6 @@ export function SiteHeader() {
           >
             <MonitorHeartIcon ref={iconRef} sx={{ color: "primary.main" }} />
             <Typography
-              ref={logoTextRef}
               variant="h6"
               sx={{
                 fontFamily: '"Bricolage Grotesque", "IBM Plex Sans", sans-serif',
@@ -181,7 +130,6 @@ export function SiteHeader() {
               CardiacAI
             </Typography>
             <LogoSpark iconRef={iconRef} containerRef={logoContainerRef} />
-            <TextOutline textRef={logoTextRef} containerRef={logoContainerRef} />
           </Stack>
         </Box>
         <Stack direction="row" spacing={0.5} component="nav" aria-label="Primary">
