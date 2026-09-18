@@ -51,6 +51,49 @@
   }
 }
 
+/* Logo spark (SiteHeader.tsx) — a small bright dot that travels once from
+   the icon across "CardiacAI", then fades and loops. The cubic-bezier
+   below (not a linear/steps timing) is what gives it the "starts slow,
+   speeds up through the middle, ends slow" motion the animated `left`
+   keyframes alone wouldn't produce with only two keyframes. */
+.logo-spark {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background-color: #34f5c1;
+  /* Comet trail: offset, blurred copies stacked behind the dot's own
+     direction of travel (it moves left-to-right, so the trail sits to its
+     left) — cheaper and smoother than animating multiple elements. */
+  box-shadow:
+    -6px 0 4px 0 rgba(52, 245, 193, 0.5),
+    -12px 0 8px 0 rgba(52, 245, 193, 0.25),
+    -18px 0 12px 1px rgba(52, 245, 193, 0.1);
+  pointer-events: none;
+  animation: logo-spark-travel 3.2s cubic-bezier(0.76, 0, 0.24, 1) infinite;
+}
+
+@keyframes logo-spark-travel {
+  0% {
+    left: 0%;
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  94% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
 /* Custom cursor (mouse-only, see CustomCursor.tsx) — a normal arrow shape
    (not a dot), recolored to the palette's pale bioluminescent green with a
    bright outline. `filter: drop-shadow` (not box-shadow) so the glow hugs

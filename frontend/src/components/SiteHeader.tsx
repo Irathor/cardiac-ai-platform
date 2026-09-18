@@ -22,26 +22,26 @@ export function SiteHeader() {
   return (
     <AppBar position="sticky" elevation={0}>
       <Toolbar sx={{ gap: 2 }}>
-        <Stack
-          direction="row"
-          spacing={1.25}
-          alignItems="center"
-          component={Link}
-          to="/"
-          sx={{ textDecoration: "none", flexGrow: 1 }}
-        >
-          <MonitorHeartIcon sx={{ color: "primary.main" }} />
-          <Typography
-            variant="h6"
-            sx={{
-              fontFamily: '"Bricolage Grotesque", "IBM Plex Sans", sans-serif',
-              color: "text.primary",
-              fontWeight: 600,
-            }}
-          >
-            CardiacAI
-          </Typography>
-        </Stack>
+        <Box component={Link} to="/" sx={{ textDecoration: "none", flexGrow: 1, display: "flex" }}>
+          {/* `width: fit-content` (not the outer flexGrow Box) is what the
+              spark's 0%/100% `left` resolves against — it needs to travel
+              exactly from the icon to the end of "CardiacAI", not across
+              the header's whole remaining width. */}
+          <Stack direction="row" spacing={1.25} alignItems="center" sx={{ position: "relative", width: "fit-content" }}>
+            <MonitorHeartIcon sx={{ color: "primary.main" }} />
+            <Typography
+              variant="h6"
+              sx={{
+                fontFamily: '"Bricolage Grotesque", "IBM Plex Sans", sans-serif',
+                color: "text.primary",
+                fontWeight: 600,
+              }}
+            >
+              CardiacAI
+            </Typography>
+            <Box className="logo-spark" aria-hidden="true" />
+          </Stack>
+        </Box>
         <Stack direction="row" spacing={0.5} component="nav" aria-label="Primary">
           {NAV_ITEMS.map((item) => {
             const active = location.pathname === item.to;
