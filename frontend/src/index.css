@@ -51,45 +51,59 @@
   }
 }
 
-/* Logo spark (SiteHeader.tsx) — a small bright dot that travels once from
-   the icon across "CardiacAI", then fades and loops. The cubic-bezier
-   below (not a linear/steps timing) is what gives it the "starts slow,
-   speeds up through the middle, ends slow" motion the animated `left`
-   keyframes alone wouldn't produce with only two keyframes. */
-.logo-spark {
+/* Logo spark (SiteHeader.tsx) — a fine dot that rides the exact path
+   LogoSpark computes (the icon's own "spike", then a straight line to the
+   end of "CardiacAI"), via `offset-path`/`offset-distance` rather than a
+   straight `left` tween, so it actually follows the icon's zigzag instead
+   of cutting through it in a straight line. The cubic-bezier timing (not
+   linear) is what gives the "starts slow, speeds up through the middle,
+   ends slow" motion from just two `offset-distance` keyframes.
+   `.logo-spark-echo` are 3 identical, blurred, lower-opacity copies started
+   a little later (see SPARK_ECHOES) — since they share the exact same
+   path/timing, staggering only their start time makes them lag behind the
+   lead dot by that long, which reads as a trail that fades shortly after
+   the dot passes, without animating a separate stroke/dash effect. */
+.logo-spark,
+.logo-spark-echo {
   position: absolute;
-  top: 50%;
-  left: 0%;
-  width: 5px;
-  height: 5px;
-  margin-top: -2.5px;
-  margin-left: -2.5px;
+  top: 0;
+  left: 0;
   border-radius: 50%;
-  background-color: #34f5c1;
-  /* Comet trail: offset, blurred copies stacked behind the dot's own
-     direction of travel (it moves left-to-right, so the trail sits to its
-     left) — cheaper and smoother than animating multiple elements. */
-  box-shadow:
-    -6px 0 4px 0 rgba(52, 245, 193, 0.5),
-    -12px 0 8px 0 rgba(52, 245, 193, 0.25),
-    -18px 0 12px 1px rgba(52, 245, 193, 0.1);
   pointer-events: none;
+  offset-rotate: 0deg;
   animation: logo-spark-travel 3.2s cubic-bezier(0.76, 0, 0.24, 1) infinite;
+  animation-fill-mode: backwards;
+}
+
+.logo-spark {
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  background-color: #34f5c1;
+  box-shadow: 0 0 3px 0.5px rgba(52, 245, 193, 0.7);
+}
+
+.logo-spark-echo {
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  background-color: #34f5c1;
+  filter: blur(1.5px);
 }
 
 @keyframes logo-spark-travel {
   0% {
-    left: 0%;
+    offset-distance: 0%;
     opacity: 0;
   }
   6% {
-    opacity: 1;
+    opacity: var(--spark-peak-opacity, 1);
   }
   94% {
-    opacity: 1;
+    opacity: var(--spark-peak-opacity, 1);
   }
   100% {
-    left: 100%;
+    offset-distance: 100%;
     opacity: 0;
   }
 }
