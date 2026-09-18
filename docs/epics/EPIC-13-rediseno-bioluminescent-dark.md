@@ -176,5 +176,22 @@ una tarjeta del dashboard confirmando que solo la tarjeta bajo el puntero se ilu
 adyacente permanece sin cambios) y que el botón "Log in" muestra texto blanco legible sobre el
 nuevo relleno.
 
+### Tercer ajuste post-cierre (cursor personalizado)
+Petición nueva del usuario, no una corrección de algo ya especificado: un cursor de ratón
+personalizado en todo el sitio — punto verde claro de la paleta (`tokens.cyanLight`) con borde
+brillante y animación de "latido" rítmico. Nuevo componente
+`frontend/src/components/CustomCursor.tsx`, montado una vez en `App.tsx`: solo se activa en
+dispositivos con ratón real (`matchMedia("(hover: hover) and (pointer: fine)")` — no toca el
+puntero nativo en táctil), sigue el cursor escribiendo `style.transform` directamente sobre un
+ref (sin re-render de React en cada `mousemove`), y oculta el cursor nativo
+(`cursor: none` sobre `body.custom-cursor-active`) mientras está activo. La animación reutiliza
+el mismo ritmo doble "lub-dub" que ya usa `pulse-glow` para "señal viva", pero como un
+`@keyframes` propio (`cursor-heartbeat`) porque usa el rgb de `cyanLight`, no el de `cyan`.
+Verificado: `npm run lint`/`build`/`vitest run` (40/40) en verde — hubo que guardar un fix
+puntual en el propio componente (`typeof window.matchMedia === "function"` antes de llamarlo),
+porque `jsdom` no implementa `matchMedia` y rompía `App.test.tsx`; captura real con Playwright
+confirmando el punto verde claro con el `transform`/color/animación esperados y
+`cursor: none` aplicado sobre `body`.
+
 ## Estado
 Completada

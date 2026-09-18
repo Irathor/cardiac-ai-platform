@@ -1,6 +1,7 @@
 import { Box } from "@mui/material";
 import { Route, Routes } from "react-router-dom";
 
+import { CustomCursor } from "../components/CustomCursor";
 import { ResearchDisclaimerBanner } from "../components/ResearchDisclaimerBanner";
 import { SiteHeader } from "../components/SiteHeader";
 import { DashboardPage } from "../pages/DashboardPage";
@@ -11,6 +12,7 @@ import { ModelTrainingPage } from "../pages/ModelTrainingPage";
 export function App() {
   return (
     <Box display="flex" flexDirection="column" minHeight="100vh">
+      <CustomCursor />
       <SiteHeader />
       <ResearchDisclaimerBanner />
       <Routes>

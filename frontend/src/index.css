@@ -51,6 +51,48 @@
   }
 }
 
+/* Custom cursor (mouse-only, see CustomCursor.tsx) — pale bioluminescent
+   green (tokens.cyanLight) with a bright border, same lub-dub rhythm as
+   pulse-glow above but its own keyframe since it needs cyanLight's rgb,
+   not cyan's. */
+.custom-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #7bf9d7;
+  border: 2px solid #7bf9d7;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 1;
+  transition: opacity 150ms ease;
+  animation: cursor-heartbeat 1.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+body.custom-cursor-active,
+body.custom-cursor-active * {
+  cursor: none !important;
+}
+
+@keyframes cursor-heartbeat {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(123, 249, 215, 0.55);
+  }
+  8% {
+    box-shadow: 0 0 0 6px rgba(123, 249, 215, 0);
+  }
+  16% {
+    box-shadow: 0 0 0 0 rgba(123, 249, 215, 0.55);
+  }
+  30% {
+    box-shadow: 0 0 0 9px rgba(123, 249, 215, 0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
