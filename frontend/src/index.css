@@ -51,19 +51,16 @@
   }
 }
 
-/* Custom cursor (mouse-only, see CustomCursor.tsx) — pale bioluminescent
-   green (tokens.cyanLight) with a bright border, same lub-dub rhythm as
-   pulse-glow above but its own keyframe since it needs cyanLight's rgb,
-   not cyan's. */
+/* Custom cursor (mouse-only, see CustomCursor.tsx) — a normal arrow shape
+   (not a dot), recolored to the palette's pale bioluminescent green with a
+   bright outline. `filter: drop-shadow` (not box-shadow) so the glow hugs
+   the arrow's actual silhouette instead of its rectangular bounding box.
+   Same lub-dub rhythm as pulse-glow above, but its own keyframe since it
+   animates a filter, not a box-shadow, and uses cyanLight's rgb. */
 .custom-cursor {
   position: fixed;
   top: 0;
   left: 0;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background-color: #7bf9d7;
-  border: 2px solid #7bf9d7;
   pointer-events: none;
   z-index: 9999;
   opacity: 1;
@@ -80,16 +77,16 @@ body.custom-cursor-active * {
 @keyframes cursor-heartbeat {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(123, 249, 215, 0.55);
+    filter: drop-shadow(0 0 0 rgba(123, 249, 215, 0));
   }
   8% {
-    box-shadow: 0 0 0 6px rgba(123, 249, 215, 0);
+    filter: drop-shadow(0 0 8px rgba(123, 249, 215, 0.9));
   }
   16% {
-    box-shadow: 0 0 0 0 rgba(123, 249, 215, 0.55);
+    filter: drop-shadow(0 0 0 rgba(123, 249, 215, 0));
   }
   30% {
-    box-shadow: 0 0 0 9px rgba(123, 249, 215, 0);
+    filter: drop-shadow(0 0 10px rgba(123, 249, 215, 0.9));
   }
 }
 
