@@ -18,6 +18,9 @@ test-results/
 .DS_Store
 Thumbs.db
 
+# Local Claude Code settings (per-machine permissions), never shared.
+.claude/
+
 data/acdc-raw/
 data/models/
 

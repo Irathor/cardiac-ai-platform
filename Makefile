@@ -1,4 +1,4 @@
-.PHONY: up down build logs migrate seed ml-test backend-test frontend-test smoke-test
+.PHONY: up down build logs migrate seed ml-test backend-test frontend-test
 
 up:
 	docker compose up --build
@@ -26,6 +26,3 @@ backend-test:
 
 frontend-test:
 	cd frontend && npm test
-
-smoke-test:
-	docker compose exec backend python -m app.scripts.smoke_test_training
