@@ -10,8 +10,9 @@ from app.db.session import get_db
 from app.models.imaging_study import ImagingStudy
 from app.models.user import User
 from app.repositories import analysis_repository
-from app.schemas.analysis import AIAnalysisOut
-from app.services import analysis_service, study_service
+from app.schemas.analysis import AIAnalysisOut, LlmExplanationOut
+from app.services import analysis_service, llm_explanation_service, study_service
+from app.services.llm_explanation_service import LlmExplanationError
 from app.tasks.analysis_tasks import run_analysis
 
 router = APIRouter()
@@ -86,3 +87,32 @@ def get_analysis_gradcam(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
     data = analysis_service.get_gradcam_file_bytes(analysis)
     return Response(content=data, media_type=_NPY_CONTENT_TYPE)
+
+
+@router.post("/analyses/{analysis_id}/explanation")
+def generate_analysis_explanation(
+    analysis_id: uuid.UUID,
+    force: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(RoleName.ADMIN, RoleName.DOCTOR)),
+) -> LlmExplanationOut:
+    """EPIC-18: returns the cached explanation if one exists (unless
+    `force=true`), otherwise generates one for real via the local Ollama
+    model and caches it. Always 200 — a generation failure (Ollama down,
+    etc.) is an honest `error` field, not an HTTP error, same pattern as
+    `gradcam_error`/`biomarker_consistency_error` elsewhere on this model."""
+    analysis = _load_analysis(db, analysis_id, current_user)
+    if analysis.llm_explanation is not None and not force:
+        return LlmExplanationOut(explanation=analysis.llm_explanation, error=None)
+
+    try:
+        explanation = llm_explanation_service.generate_explanation(analysis)
+    except LlmExplanationError as exc:
+        analysis.llm_explanation_error = str(exc)
+        db.commit()
+        return LlmExplanationOut(explanation=None, error=str(exc))
+
+    analysis.llm_explanation = explanation
+    analysis.llm_explanation_error = None
+    db.commit()
+    return LlmExplanationOut(explanation=explanation, error=None)

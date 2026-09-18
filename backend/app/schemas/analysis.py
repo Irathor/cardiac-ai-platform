@@ -32,7 +32,20 @@ class AIAnalysisOut(BaseModel):
     # this signal itself couldn't be computed, without failing the analysis.
     biomarker_consistency: dict[str, object] | None
     biomarker_consistency_error: str | None
+    # EPIC-18: whether a cached LLM explanation already exists (so the
+    # frontend can show "view" vs. "generate" without an extra round trip),
+    # and the honest reason when the last generation attempt failed. The
+    # explanation text itself is never embedded here — it's only ever
+    # returned by POST /analyses/{id}/explanation, which controls exactly
+    # when a real model call happens.
+    llm_explanation_available: bool
+    llm_explanation_error: str | None
     created_at: datetime
     completed_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class LlmExplanationOut(BaseModel):
+    explanation: str | None
+    error: str | None

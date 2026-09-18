@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from app.core.model_registry import MODEL_NAME_CNN3D, MODEL_NAME_UNET
-from app.services import analysis_service
+from app.services import analysis_service, llm_explanation_service
 from tests.conftest import (
     assign_doctor,
     make_model_version,
@@ -540,3 +540,106 @@ def test_cnn3d_analysis_stays_completed_when_biomarker_consistency_fails(
     assert result["biomarker_consistency"] is None
     assert result["biomarker_consistency_error"] is not None
     assert "Consistencia de biomarcadores no disponible" in result["biomarker_consistency_error"]
+
+
+class _FakeOllamaResponse:
+    def __init__(self, payload: dict, status_code: int = 200):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = str(payload)
+
+    def json(self) -> dict:
+        return self._payload
+
+
+def test_generate_explanation_calls_ollama_for_real_and_caches_it(client, db_session, demo_org, monkeypatch):
+    """EPIC-18: the first call with no cached explanation hits Ollama for
+    real (httpx is monkeypatched, same approach as
+    test_dl_inference_client.py — no real Ollama in the test environment)
+    and persists the result; a second call without `force` returns the
+    cached text without calling Ollama again."""
+    _doctor, study = _setup_study_with_ed_es(db_session, demo_org, suffix="llm1", es_lv_volume=50.0)
+    token = _login(client, "doc-allm1@cardiacai-test.dev")
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    call_count = {"n": 0}
+    seen_payload = {}
+
+    def fake_post(url, json=None, timeout=None):
+        call_count["n"] += 1
+        seen_payload.update(json)
+        return _FakeOllamaResponse({"response": "El modelo predice NORMAL con alta confianza.", "done": True})
+
+    monkeypatch.setattr(llm_explanation_service.httpx, "post", fake_post)
+
+    first = client.post(f"/api/v1/analyses/{analysis_id}/explanation", headers=_auth(token))
+    assert first.status_code == 200
+    assert first.json() == {"explanation": "El modelo predice NORMAL con alta confianza.", "error": None}
+    assert call_count["n"] == 1
+    assert "NORMAL" in seen_payload["prompt"]
+    assert seen_payload["stream"] is False
+
+    second = client.post(f"/api/v1/analyses/{analysis_id}/explanation", headers=_auth(token))
+    assert second.status_code == 200
+    assert second.json()["explanation"] == "El modelo predice NORMAL con alta confianza."
+    assert call_count["n"] == 1  # cached — Ollama not called again
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["llm_explanation_available"] is True
+    assert result["llm_explanation_error"] is None
+
+
+def test_generate_explanation_force_regenerates(client, db_session, demo_org, monkeypatch):
+    _doctor, study = _setup_study_with_ed_es(db_session, demo_org, suffix="llm2", es_lv_volume=50.0)
+    token = _login(client, "doc-allm2@cardiacai-test.dev")
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    responses = iter(["primera versión", "segunda versión"])
+
+    def fake_post(url, json=None, timeout=None):
+        return _FakeOllamaResponse({"response": next(responses), "done": True})
+
+    monkeypatch.setattr(llm_explanation_service.httpx, "post", fake_post)
+
+    first = client.post(f"/api/v1/analyses/{analysis_id}/explanation", headers=_auth(token))
+    assert first.json()["explanation"] == "primera versión"
+
+    regenerated = client.post(f"/api/v1/analyses/{analysis_id}/explanation?force=true", headers=_auth(token))
+    assert regenerated.json()["explanation"] == "segunda versión"
+
+
+def test_generate_explanation_reports_honest_error_when_ollama_unreachable(client, db_session, demo_org):
+    """No monkeypatch at all — Ollama is genuinely unreachable in the test
+    environment, so this exercises the real connection-error path, not a
+    simulated one. Contract: 200 with an honest `error` field, never a
+    fabricated explanation and never a raised exception."""
+    _doctor, study = _setup_study_with_ed_es(db_session, demo_org, suffix="llm3", es_lv_volume=50.0)
+    token = _login(client, "doc-allm3@cardiacai-test.dev")
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(token))
+    analysis_id = created.json()["id"]
+
+    response = client.post(f"/api/v1/analyses/{analysis_id}/explanation", headers=_auth(token))
+    assert response.status_code == 200
+    body = response.json()
+    assert body["explanation"] is None
+    assert body["error"] is not None
+
+    result = client.get(f"/api/v1/analyses/{analysis_id}", headers=_auth(token)).json()
+    assert result["llm_explanation_available"] is False
+    assert "Ollama" in result["llm_explanation_error"]
+
+
+def test_unassigned_doctor_cannot_generate_explanation_for_someone_elses_analysis(client, db_session, demo_org):
+    make_user(db_session, demo_org, email="stranger-llm@cardiacai-test.dev", role="DOCTOR")
+    _doctor, study = _setup_study_with_ed_es(db_session, demo_org, suffix="llm4", es_lv_volume=50.0)
+    owner_token = _login(client, "doc-allm4@cardiacai-test.dev")
+
+    created = client.post(f"/api/v1/studies/{study.id}/analyses", headers=_auth(owner_token))
+    analysis_id = created.json()["id"]
+
+    stranger_token = _login(client, "stranger-llm@cardiacai-test.dev")
+    response = client.post(f"/api/v1/analyses/{analysis_id}/explanation", headers=_auth(stranger_token))
+    assert response.status_code == 404

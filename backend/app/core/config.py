@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     training_runner_url: str = "http://host.docker.internal:8800"
     data_root: str = "/data"
 
+    # LLM textual explanation (EPIC-18, see docs/llm-explanation.md and ADR-9) — Ollama
+    # running natively on the host (same "not in Docker" reasoning as the training runner
+    # above: GPU passthrough into a container isn't available here), reached the same way.
+    # A manual prerequisite (`ollama serve` + `ollama pull qwen2.5:7b-instruct`), never
+    # started by the backend itself.
+    ollama_url: str = "http://host.docker.internal:11434"
+    ollama_model: str = "qwen2.5:7b-instruct"
+
     # Auth
     jwt_secret_key: str = ""
     jwt_algorithm: str = "HS256"

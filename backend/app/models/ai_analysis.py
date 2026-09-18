@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import AnalysisStatus
@@ -72,6 +72,19 @@ class AIAnalysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     biomarker_consistency: Mapped[dict | None] = mapped_column(JSON())
     biomarker_consistency_error: Mapped[str | None] = mapped_column(String(2000))
 
+    # EPIC-18: cached natural-language suggestion from a local LLM (Ollama +
+    # Qwen2.5, see app.services.llm_explanation_service and ADR-9), built
+    # only from the structured fields above (predicted_class/probabilities/
+    # biomarker_consistency) — never from gradcam's raw array, which isn't
+    # spatially meaningful (see gradcam_storage_key's own docstring above).
+    # Cached because it's a real model call, not a cheap lookup; regenerated
+    # only when the caller explicitly asks for that (see the API layer).
+    # `llm_explanation_error` is the same honest-failure pattern as
+    # gradcam_error/biomarker_consistency_error — generation failing (e.g.
+    # Ollama not running) never fails the AIAnalysis itself.
+    llm_explanation: Mapped[str | None] = mapped_column(Text())
+    llm_explanation_error: Mapped[str | None] = mapped_column(String(2000))
+
     requested_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -80,3 +93,7 @@ class AIAnalysis(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     @property
     def gradcam_available(self) -> bool:
         return self.gradcam_storage_key is not None
+
+    @property
+    def llm_explanation_available(self) -> bool:
+        return self.llm_explanation is not None

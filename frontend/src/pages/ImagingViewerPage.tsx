@@ -33,6 +33,7 @@ import { alpha } from "@mui/material/styles";
 
 import { BiomarkerConsistencyPanel } from "../components/BiomarkerConsistencyPanel";
 import { GradcamPanel } from "../components/GradcamPanel";
+import { LlmExplanationPanel } from "../components/LlmExplanationPanel";
 import { LoginCard } from "../components/LoginCard";
 import { NiftiViewer } from "../components/NiftiViewer";
 import { heroSurface, tokens } from "../theme";
@@ -321,6 +322,14 @@ export function ImagingViewerPage() {
                       />
                     </Box>
                   )}
+                {token && analysis && analysis.status === "COMPLETED" && analysis.predicted_class && (
+                  <LlmExplanationPanel
+                    analysisId={analysis.id}
+                    token={token}
+                    explanationAvailable={analysis.llm_explanation_available}
+                    explanationError={analysis.llm_explanation_error}
+                  />
+                )}
                 {biomarkers.length > 0 && (
                   <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
                     {biomarkers.map((b) => (

@@ -1,4 +1,4 @@
-import { apiGetAuthed, apiGetBlobAuthed } from "./client";
+import { apiGetAuthed, apiGetBlobAuthed, apiPostAuthed } from "./client";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -45,8 +45,18 @@ export interface AIAnalysis {
   // EPIC-12: see `BiomarkerConsistency` above.
   biomarker_consistency: BiomarkerConsistency | null;
   biomarker_consistency_error: string | null;
+  // EPIC-18: whether a cached LLM explanation already exists, and the
+  // honest reason when the last generation attempt failed. See
+  // `fetchOrGenerateLlmExplanation` for the actual text.
+  llm_explanation_available: boolean;
+  llm_explanation_error: string | null;
   created_at: string;
   completed_at: string | null;
+}
+
+export interface LlmExplanation {
+  explanation: string | null;
+  error: string | null;
 }
 
 export async function requestAnalysis(studyId: string, token: string): Promise<AIAnalysis> {
@@ -70,4 +80,17 @@ export function fetchAnalysis(analysisId: string, token: string): Promise<AIAnal
  * `true`, otherwise the server 404s with `gradcam_error` as its detail. */
 export function fetchGradcamAttribution(analysisId: string, token: string): Promise<Blob> {
   return apiGetBlobAuthed(`/analyses/${analysisId}/gradcam`, token);
+}
+
+/** EPIC-18: returns the cached explanation if one exists (unless `force`),
+ * otherwise generates one for real via the local Ollama model. Always
+ * resolves with either `explanation` or `error` set — a generation failure
+ * (e.g. Ollama not running) is not thrown, it's the honest `error` field,
+ * same pattern as `gradcam_error`/`biomarker_consistency_error`. */
+export function fetchOrGenerateLlmExplanation(
+  analysisId: string,
+  token: string,
+  force = false,
+): Promise<LlmExplanation> {
+  return apiPostAuthed(`/analyses/${analysisId}/explanation${force ? "?force=true" : ""}`, {}, token);
 }
